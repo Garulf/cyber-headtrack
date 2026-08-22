@@ -46,8 +46,9 @@ the Game Hub/Experience driver described above for the hardware itself.
    would need to call them yourself, e.g. from another mod's console/binding, until a
    keybind script is added.
 
-   The mechanism a future keybind script would use is already established elsewhere in
-   this codebase: `@wrapMethod(PlayerPuppet) protected cb func OnAction(action:
+   The mechanism a future keybind script would use is a standard, externally verified
+   redscript pattern (not yet used in this codebase, whose only wrap is
+   `LocomotionEventsTransition.OnUpdate`): `@wrapMethod(PlayerPuppet) protected cb func OnAction(action:
    ListenerAction, consumer: ListenerActionConsumer) -> Void`, checking
    `ListenerAction.IsAction(action, n"YourBindingName")` together with
    `ListenerAction.IsButtonJustPressed(action)`, paired with a custom binding registered
@@ -59,10 +60,13 @@ the Game Hub/Experience driver described above for the hardware itself.
 
 Edit `red4ext/plugins/CyberHeadtrack/config.toml`:
 
-- `rot_sensitivity` / `lean_sensitivity`: higher values require more head movement to
-  reach the same in-game rotation.
-- `rot_deadzone_deg` / `lean_deadzone_cm`: movement below this threshold is ignored.
+- `rot_sensitivity`: higher values require more head movement to reach the same
+  in-game rotation.
+- `rot_deadzone_deg`: rotation movement below this threshold is ignored.
 - `max_yaw_deg` / `max_pitch_deg`: clamps on how far the camera can rotate.
+- `lean_sensitivity` / `lean_deadzone_cm`: present for forward-compatibility with a
+  future positional-lean feature; v1 applies rotation only (lean is an explicit v1
+  non-goal), so these two values currently have no in-game effect.
 
 ## Scope
 

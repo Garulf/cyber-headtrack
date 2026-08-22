@@ -16,9 +16,6 @@ constexpr double kLeanGains[11][2] = {
     {2, 7.5}, {3, 24}, {5, 60}, {7, 110}, {8, 150}, {9, 200}
 };
 
-constexpr double kRotFilterDeadzoneDeg = 0.03;
-constexpr double kLeanFilterDeadzoneCm = 0.1;
-
 double Interpolate(const double table[][2], int rows, double x) {
     if (x <= table[0][0]) return table[0][1];
     for (int i = 1; i < rows; ++i) {
@@ -67,14 +64,15 @@ void AxisGroupRate(const double delta[3], double deadzone, double sensitivity,
 }  // namespace
 
 Offset AdaptiveFilterStep(const Offset& lastSmoothed, const Offset& target, double dtSeconds,
-                           double rotSensitivity, double leanSensitivity) {
+                           double rotSensitivity, double leanSensitivity,
+                           double rotDeadzoneDeg, double leanDeadzoneCm) {
     double rotDelta[3] = {
         target.yaw - lastSmoothed.yaw,
         target.pitch - lastSmoothed.pitch,
         target.roll - lastSmoothed.roll,
     };
     double rotRate[3];
-    AxisGroupRate(rotDelta, kRotFilterDeadzoneDeg, rotSensitivity, kRotGains, 7, rotRate);
+    AxisGroupRate(rotDelta, rotDeadzoneDeg, rotSensitivity, kRotGains, 7, rotRate);
 
     // Gain tables are calibrated for cm-scale deltas; Offset's lean fields are in the same
     // "blocks" convention HeadGlance uses (1 block == 100cm), so convert to cm before the
@@ -85,7 +83,7 @@ Offset AdaptiveFilterStep(const Offset& lastSmoothed, const Offset& target, doub
         (target.leanZ - lastSmoothed.leanZ) * 100.0,
     };
     double leanRate[3];
-    AxisGroupRate(leanDelta, kLeanFilterDeadzoneCm, leanSensitivity, kLeanGains, 11, leanRate);
+    AxisGroupRate(leanDelta, leanDeadzoneCm, leanSensitivity, kLeanGains, 11, leanRate);
 
     Offset result;
     result.yaw = lastSmoothed.yaw + rotRate[0] * dtSeconds;
