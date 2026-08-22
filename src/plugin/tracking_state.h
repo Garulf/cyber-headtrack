@@ -1,6 +1,7 @@
 #pragma once
 
 #include "adaptive_filter.h"
+#include "body_visibility.h"
 #include "config.h"
 #include "tobii_source.h"
 
@@ -20,6 +21,10 @@ public:
     float Pitch() const { return static_cast<float>(current_.pitch); }
     float Roll() const { return static_cast<float>(current_.roll); }
 
+    float BodyVisibilityBlend() const {
+        return static_cast<float>(ComputeBodyVisibilityBlend(current_.pitch, bodyVisibilityConfig_));
+    }
+
     bool Enabled() const { return enabled_; }
     void SetEnabled(bool enabled) { enabled_ = enabled; }
     void Recenter() { current_ = Offset{}; }
@@ -27,6 +32,7 @@ public:
 private:
     TobiiSource source_;
     TrackingConfig config_;
+    BodyVisibilityConfig bodyVisibilityConfig_;
     Offset current_;
     bool enabled_ = false;
 };

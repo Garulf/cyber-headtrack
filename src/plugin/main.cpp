@@ -21,6 +21,11 @@ void GetHeadtrackRoll(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float
     if (aOut) *aOut = TrackingState::Instance().Roll();
 }
 
+void GetHeadtrackBodyVisibilityBlend(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t) {
+    aFrame->code++;
+    if (aOut) *aOut = TrackingState::Instance().BodyVisibilityBlend();
+}
+
 void GetHeadtrackEnabled(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t) {
     aFrame->code++;
     if (aOut) *aOut = TrackingState::Instance().Enabled();
@@ -76,6 +81,11 @@ RED4EXT_C_EXPORT void RED4EXT_CALL PostRegisterTypes() {
     roll->flags = flags;
     roll->SetReturnType("Float");
     rtti->RegisterFunction(roll);
+
+    auto bodyBlend = RED4ext::CGlobalFunction::Create("GetHeadtrackBodyVisibilityBlend", "GetHeadtrackBodyVisibilityBlend", &GetHeadtrackBodyVisibilityBlend);
+    bodyBlend->flags = flags;
+    bodyBlend->SetReturnType("Float");
+    rtti->RegisterFunction(bodyBlend);
 
     auto getEnabled = RED4ext::CGlobalFunction::Create("GetHeadtrackEnabled", "GetHeadtrackEnabled", &GetHeadtrackEnabled);
     getEnabled->flags = flags;
