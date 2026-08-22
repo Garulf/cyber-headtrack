@@ -8,9 +8,9 @@ TrackingState& TrackingState::Instance() {
     return instance;
 }
 
-void TrackingState::Initialize() {
+void TrackingState::Initialize(const std::filesystem::path& configPath) {
     try {
-        config_ = LoadConfig("red4ext/plugins/CyberHeadtrack/config.toml");
+        config_ = LoadConfig(configPath.string());
     } catch (const std::exception&) {
         config_ = TrackingConfig{};
     }

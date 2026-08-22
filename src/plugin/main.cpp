@@ -1,10 +1,24 @@
 #include <RED4ext/RED4ext.hpp>
 
+#include <algorithm>
 #include <chrono>
+#include <filesystem>
 
 #include "tracking_state.h"
 
 namespace {
+
+// RED4ext's PluginHandle is the plugin DLL's own HMODULE (Api/v1/PluginHandle.hpp), so
+// GetModuleFileNameW resolves the DLL's on-disk path. The config lives next to the DLL;
+// anchoring to it is required because the game's CWD is bin/x64, not the install root.
+std::filesystem::path ConfigPathForPlugin(RED4ext::v1::PluginHandle aHandle) {
+    wchar_t buffer[MAX_PATH];
+    const DWORD length = GetModuleFileNameW(aHandle, buffer, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        return {};
+    }
+    return std::filesystem::path(buffer).parent_path() / L"config.toml";
+}
 
 void GetHeadtrackYaw(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t) {
     aFrame->code++;
@@ -111,7 +125,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
         rtti->AddRegisterCallback(RegisterTypes);
         rtti->AddPostRegisterCallback(PostRegisterTypes);
 
-        TrackingState::Instance().Initialize();
+        TrackingState::Instance().Initialize(ConfigPathForPlugin(aHandle));
 
         RED4ext::v1::GameState runningState{
             .OnEnter = nullptr,

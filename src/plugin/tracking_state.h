@@ -1,5 +1,7 @@
 #pragma once
 
+#include <filesystem>
+
 #include "adaptive_filter.h"
 #include "body_visibility.h"
 #include "config.h"
@@ -14,7 +16,10 @@ class TrackingState {
 public:
     static TrackingState& Instance();
 
-    void Initialize();
+    // configPath must be an absolute path to config.toml (anchored to the plugin DLL's own
+    // directory by the caller); the game's CWD is bin/x64, so a relative path would never
+    // resolve. Falls back to defaults if the file is missing or unreadable.
+    void Initialize(const std::filesystem::path& configPath);
     void Shutdown();
     void Update(double dtSeconds);
 
