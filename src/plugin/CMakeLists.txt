@@ -9,7 +9,9 @@ FetchContent_MakeAvailable(red4ext_sdk)
 # Path to an extracted Tobii Stream Engine SDK (the gated download from
 # https://developer.tobii.com/product-integration/stream-engine/ or the
 # Tobii.StreamEngine.Native NuGet package), laid out as include/tobii/*.h plus the
-# import library. Required because Tobii does not permit redistributing the SDK here.
+# import library. The SDK (headers + import library) is a gated download and is not
+# vendored in this repo; that is separate from the runtime tobii_stream_engine.dll,
+# which the license does permit redistributing to end users (see README.md).
 set(CHT_TOBII_SDK_DIR "" CACHE PATH "Root of the Tobii Stream Engine SDK (contains include/ and lib dirs)")
 if(NOT CHT_TOBII_SDK_DIR OR NOT EXISTS "${CHT_TOBII_SDK_DIR}/include/tobii/tobii.h")
     message(FATAL_ERROR

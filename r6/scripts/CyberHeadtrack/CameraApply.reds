@@ -11,7 +11,9 @@
 //
 // Per-frame hook: vanilla PlayerPuppet has no OnUpdate, so this wraps
 // LocomotionEventsTransition.OnUpdate (player state machine, runs once per frame
-// for the active on-foot locomotion state; every vanilla override calls super).
+// for the active on-foot locomotion state). Most vanilla overrides call super, but
+// a few transient states (e.g. ClimbEvents, SuperheroLandEvents) do not, so the
+// offset briefly stops applying there and resumes with normal locomotion.
 //
 // Composition assumes the game rewrites the camera's local orientation and local
 // position from look input / camera animation each frame before this hook runs, so
