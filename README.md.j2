@@ -1,0 +1,106 @@
+{% extends "base.md.j2" %}
+
+{# Existing README content, moved here by `readwright init --from-readme`.
+   Trim sections now provided by the base template (install, contributing, license),
+   remove the raw tags to start using helpers like screenshot() and badge(). #}
+{% block usage %}
+A RED4ext + redscript mod for Cyberpunk 2077 that reads head-pose data from a Tobii Eye
+Tracker 5 and applies it as a first-person camera glance. No eye/gaze tracking is used.
+
+## Requirements
+
+- Cyberpunk 2077, with [RED4ext](https://github.com/WopsS/RED4ext) and
+  [redscript](https://github.com/jac3km4/redscript) installed.
+- A Tobii Eye Tracker 5.
+- Tobii's own consumer software (Tobii Game Hub or Tobii Experience) installed, so
+  Windows recognizes the Eye Tracker 5 hardware in the first place. This mod does not
+  replace that driver layer; it only talks to the tracker once it is enumerable.
+
+**On the Stream Engine SDK:** this mod links against Tobii's Stream Engine import
+library at build time, and its runtime DLL (`tobii_stream_engine.dll`) is legally
+redistributable alongside the plugin. Under the Tobii Core SDK and Tobii Gaming SDK
+Agreement (v1.2), §3.1 permits distributing Applications built on the Software
+Components -- including the Stream Engine -- for "Gaze Interaction Use" (using tracking
+data as interactive user input, which is what this mod does), and §3.3 grants the
+sub-licensing rights needed to redistribute the Stream Engine DLL itself to end users as
+part of the Application. **The build does not currently copy this DLL into the plugin
+output folder automatically** -- as of v1 there is no CMake install/copy step that does
+this, so it's a manual packaging step: after building, copy
+`tobii_stream_engine.dll` from the Tobii SDK's `build/native/lib/x64/` directory (the
+layout of the `Tobii.StreamEngine.Native` NuGet package) into
+`red4ext/plugins/CyberHeadtrack/` next to the built plugin DLL. You do not need to
+install anything from Tobii's SDK beyond having that one file in place; you only need
+the Game Hub/Experience driver described above for the hardware itself.
+
+## Install
+
+1. Build the plugin, then copy `tobii_stream_engine.dll` from the Tobii SDK's
+   `build/native/lib/x64/` directory into `red4ext/plugins/CyberHeadtrack/` next to the
+   built plugin DLL (see the SDK note above -- this is a manual step, not something the
+   build does for you). Copy the resulting `red4ext/plugins/CyberHeadtrack/` folder
+   (plugin DLL, `tobii_stream_engine.dll`, and `config.toml`) into your Cyberpunk 2077
+   install directory's `red4ext/plugins/` folder.
+2. Copy `r6/scripts/CyberHeadtrack/` into your Cyberpunk 2077 install directory's
+   `r6/scripts/` folder.
+3. Launch the game. Tracking is off by default.
+4. Enable tracking. **v1 does not ship a keybind for this.** The native functions
+   `SetHeadtrackEnabled(enabled: Bool)` and `RecenterHeadtrack()` are registered and
+   callable from redscript (see `r6/scripts/CyberHeadtrack/CameraApply.reds`), but no
+   `.reds` script in this release wires them to a key press or an in-game menu -- you
+   would need to call them yourself, e.g. from another mod's console/binding, until a
+   keybind script is added.
+
+   The mechanism a future keybind script would use is a standard, externally verified
+   redscript pattern (not yet used in this codebase, whose only wrap is
+   `LocomotionEventsTransition.OnUpdate`): `@wrapMethod(PlayerPuppet) protected cb func OnAction(action:
+   ListenerAction, consumer: ListenerActionConsumer) -> Void`, checking
+   `ListenerAction.IsAction(action, n"YourBindingName")` together with
+   `ListenerAction.IsButtonJustPressed(action)`, paired with a custom binding registered
+   in `r6/config/inputUserMappings.xml` (or via a mod-input-loader framework, depending
+   on the RED4ext/redscript ecosystem's current convention at the time it's built). That
+   script is not part of this task and is not shipped in v1.
+
+## Configuration
+
+Edit `red4ext/plugins/CyberHeadtrack/config.toml`:
+
+- `rot_sensitivity`: higher values require more head movement to reach the same
+  in-game rotation.
+- `rot_deadzone_deg`: rotation movement below this threshold is ignored.
+- `max_yaw_deg` / `max_pitch_deg`: clamps on how far the camera can rotate.
+- `lean_sensitivity` / `lean_deadzone_cm`: present for forward-compatibility with a
+  future positional-lean feature; v1 applies rotation only (lean is an explicit v1
+  non-goal), so these two values currently have no in-game effect.
+
+## Scope
+
+v1 applies head tracking as a direct camera rotation -- your aim/weapon direction moves
+with the camera, the same way flight-sim TrackIR support works. A separate effort is
+investigating whether aim can be kept independent of the camera (glance without changing
+where you'd shoot).
+
+Tracking is applied on foot only. The camera hook wraps
+`LocomotionEventsTransition.OnUpdate`, the per-frame update for the active on-foot
+locomotion state, since vanilla `PlayerPuppet` has no `OnUpdate` of its own to wrap.
+Practically this means:
+
+- Head tracking does **not** apply while driving or riding in a vehicle.
+- Head tracking briefly stops applying during a few transient player states outside the
+  normal locomotion state machine, such as climbing and the superhero-landing animation.
+  It resumes automatically once you're back in normal on-foot locomotion.
+
+A pitch-gated body-visibility offset (raising and pulling back the camera as you look
+down) is applied on top of the rotation so V's body and clothes stay in frame instead of
+clipping through the first-person view; this is tuned by the built-in constants in
+`CameraApply.reds`, not by `config.toml`.
+
+## License
+
+MIT.
+
+{% endblock %}
+
+{% block screenshots %}{% endblock %}
+{% block install %}{% endblock %}
+{% block contributing %}{% endblock %}
+{% block license %}{% endblock %}

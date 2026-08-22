@@ -16,6 +16,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: readwright-check
+        name: README is up to date (readwright check)
+        entry: readwright check
+        language: system
+        pass_filenames: false
+        files: ^(README\.md|README\.md\.j2|readme\.yaml)$
+
       - id: portable-tests
         name: portable unit tests (ctest)
         entry: bash -c 'cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug >/dev/null && cmake --build build >/dev/null && ctest --test-dir build --output-on-failure'
