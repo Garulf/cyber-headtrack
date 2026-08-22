@@ -1,0 +1,7 @@
+# cyber-headtrack tracking config
+rot_sensitivity = 6.0
+lean_sensitivity = 1.0
+rot_deadzone_deg = 0.5
+lean_deadzone_cm = 0.5
+max_yaw_deg = 45.0
+max_pitch_deg = 45.0
