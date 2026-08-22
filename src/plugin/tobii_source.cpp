@@ -1,11 +1,16 @@
 #include "tobii_source.h"
 
+#include <chrono>
 #include <string>
 
 #include <tobii/tobii.h>
 #include <tobii/tobii_streams.h>
 
 namespace {
+
+// Low-frequency retry interval for both "never connected" Start() retries and mid-session
+// tobii_device_reconnect attempts, so a missing tracker is not polled in a tight loop.
+constexpr auto kRetryInterval = std::chrono::seconds(3);
 
 void FirstUrlReceiver(const char* url, void* user_data) {
     auto& first_url = *static_cast<std::string*>(user_data);
@@ -45,11 +50,21 @@ TobiiSource::~TobiiSource() {
     Stop();
 }
 
+bool TobiiSource::RetryDue() {
+    const auto now = std::chrono::steady_clock::now();
+    if (now < nextRetry_) {
+        return false;
+    }
+    nextRetry_ = now + kRetryInterval;
+    return true;
+}
+
 bool TobiiSource::Start() {
     if (subscribed_) {
         return true;
     }
     Stop();
+    nextRetry_ = std::chrono::steady_clock::now() + kRetryInterval;
 
     if (tobii_api_create(&api_, nullptr, nullptr) != TOBII_ERROR_NO_ERROR) {
         api_ = nullptr;
@@ -84,6 +99,7 @@ bool TobiiSource::Start() {
     }
 
     subscribed_ = true;
+    nextRetry_ = {};
     return true;
 }
 
@@ -105,14 +121,19 @@ void TobiiSource::Stop() {
 
 void TobiiSource::Poll() {
     if (!subscribed_) {
+        if (RetryDue()) {
+            Start();
+        }
         return;
     }
     const tobii_error_t error = tobii_device_process_callbacks(device_);
-    if (error == TOBII_ERROR_CONNECTION_FAILED) {
-        latest_.reset();
+    if (error == TOBII_ERROR_NO_ERROR) {
+        nextRetry_ = {};
+        return;
+    }
+    latest_.reset();
+    if (error == TOBII_ERROR_CONNECTION_FAILED && RetryDue()) {
         tobii_device_reconnect(device_);
-    } else if (error != TOBII_ERROR_NO_ERROR) {
-        latest_.reset();
     }
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <optional>
 
 #include "head_pose.h"
@@ -31,6 +32,10 @@ public:
     void Stop();
 
     // Must be called periodically (e.g. once per game frame) to pump Tobii's callback queue.
+    // While unsubscribed (Start() never succeeded, or Stop() after a failure) it instead
+    // retries Start() on a low-frequency timer, so a tracker plugged in after the game
+    // launched is picked up without a retry storm. Mid-session connection failures are
+    // likewise retried via tobii_device_reconnect on the same low-frequency timer.
     void Poll();
 
     // Returns the most recent mapped head pose, or std::nullopt if no valid sample has been
@@ -40,6 +45,10 @@ public:
 private:
     friend struct TobiiSourceCallbacks;
 
+    // Returns true at most once per retry interval; arms the interval when it fires.
+    bool RetryDue();
+
+    std::chrono::steady_clock::time_point nextRetry_{};
     tobii_api_t* api_ = nullptr;
     tobii_device_t* device_ = nullptr;
     bool subscribed_ = false;
