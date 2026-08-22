@@ -63,8 +63,7 @@ bool TobiiSource::Start() {
         return false;
     }
 
-    if (tobii_device_create(api_, url.c_str(), TOBII_FIELD_OF_USE_INTERACTIVE, &device_) !=
-        TOBII_ERROR_NO_ERROR) {
+    if (tobii_device_create(api_, url.c_str(), &device_) != TOBII_ERROR_NO_ERROR) {
         device_ = nullptr;
         Stop();
         return false;
