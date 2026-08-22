@@ -7,7 +7,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(catch2)
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 
-add_executable(portable_tests test_main.cpp test_head_pose.cpp test_adaptive_filter.cpp test_config.cpp)
+add_executable(portable_tests test_main.cpp test_head_pose.cpp test_adaptive_filter.cpp test_config.cpp test_body_visibility.cpp)
 target_link_libraries(portable_tests PRIVATE portable Catch2::Catch2WithMain)
 
 include(CTest)
