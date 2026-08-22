@@ -6,8 +6,28 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(red4ext_sdk)
 
-add_library(CyberHeadtrack SHARED main.cpp)
-target_link_libraries(CyberHeadtrack PRIVATE portable RED4ext.SDK)
+# Path to an extracted Tobii Stream Engine SDK (the gated download from
+# https://developer.tobii.com/product-integration/stream-engine/ or the
+# Tobii.StreamEngine.Native NuGet package), laid out as include/tobii/*.h plus the
+# import library. Required because Tobii does not permit redistributing the SDK here.
+set(CHT_TOBII_SDK_DIR "" CACHE PATH "Root of the Tobii Stream Engine SDK (contains include/ and lib dirs)")
+if(NOT CHT_TOBII_SDK_DIR OR NOT EXISTS "${CHT_TOBII_SDK_DIR}/include/tobii/tobii.h")
+    message(FATAL_ERROR
+        "CHT_TOBII_SDK_DIR must point at an extracted Tobii Stream Engine SDK "
+        "containing include/tobii/tobii.h (Tobii Developer Zone account or the "
+        "Tobii.StreamEngine.Native NuGet package required; see README.md).")
+endif()
+
+find_library(CHT_TOBII_STREAM_ENGINE_LIB
+    NAMES tobii_stream_engine
+    PATHS "${CHT_TOBII_SDK_DIR}" "${CHT_TOBII_SDK_DIR}/lib"
+    PATH_SUFFIXES x64 lib/x64
+    REQUIRED
+)
+
+add_library(CyberHeadtrack SHARED main.cpp tobii_source.cpp)
+target_include_directories(CyberHeadtrack PRIVATE "${CHT_TOBII_SDK_DIR}/include")
+target_link_libraries(CyberHeadtrack PRIVATE portable RED4ext.SDK "${CHT_TOBII_STREAM_ENGINE_LIB}")
 target_compile_features(CyberHeadtrack PRIVATE cxx_std_20)
 target_compile_definitions(CyberHeadtrack PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 
