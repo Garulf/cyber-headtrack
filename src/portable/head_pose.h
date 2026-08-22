@@ -19,3 +19,9 @@ struct HeadPose {
 // TobiiPoseMapper (Tobii: +x right, +y up, +z towards user; rotation x=pitch,
 // y=yaw, z=roll).
 HeadPose MapTobiiSample(const RawTobiiSample& sample);
+
+// Re-expresses pose relative to reference (component-wise subtraction on every axis), so
+// the reference pose itself maps to all-zero. Used to make "recenter" capture the user's
+// current head pose as the new neutral baseline instead of assuming the tracker's own
+// zero is neutral. Pure function.
+HeadPose SubtractReference(const HeadPose& pose, const HeadPose& reference);

@@ -15,3 +15,14 @@ HeadPose MapTobiiSample(const RawTobiiSample& sample) {
     pose.rollDeg = static_cast<double>(sample.rotationXyzRad[2]) * kRadToDeg;
     return pose;
 }
+
+HeadPose SubtractReference(const HeadPose& pose, const HeadPose& reference) {
+    HeadPose relative;
+    relative.xCm = pose.xCm - reference.xCm;
+    relative.yCm = pose.yCm - reference.yCm;
+    relative.zCm = pose.zCm - reference.zCm;
+    relative.yawDeg = pose.yawDeg - reference.yawDeg;
+    relative.pitchDeg = pose.pitchDeg - reference.pitchDeg;
+    relative.rollDeg = pose.rollDeg - reference.rollDeg;
+    return relative;
+}

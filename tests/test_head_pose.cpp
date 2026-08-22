@@ -45,3 +45,56 @@ TEST_CASE("MapTobiiSample is a pure function of its input", "[head_pose]") {
     REQUIRE(first.xCm == second.xCm);
     REQUIRE(first.yawDeg == second.yawDeg);
 }
+
+TEST_CASE("SubtractReference maps the reference pose itself to all-zero", "[head_pose]") {
+    HeadPose reference{};
+    reference.xCm = 2.0;
+    reference.yCm = -1.5;
+    reference.zCm = 60.0;
+    reference.yawDeg = 5.0;
+    reference.pitchDeg = -3.0;
+    reference.rollDeg = 1.0;
+
+    HeadPose relative = SubtractReference(reference, reference);
+
+    REQUIRE(relative.xCm == Approx(0.0));
+    REQUIRE(relative.yCm == Approx(0.0));
+    REQUIRE(relative.zCm == Approx(0.0));
+    REQUIRE(relative.yawDeg == Approx(0.0));
+    REQUIRE(relative.pitchDeg == Approx(0.0));
+    REQUIRE(relative.rollDeg == Approx(0.0));
+}
+
+TEST_CASE("SubtractReference yields the delta from the reference on every axis", "[head_pose]") {
+    HeadPose reference{};
+    reference.yawDeg = 5.0;
+    reference.pitchDeg = -3.0;
+    reference.rollDeg = 1.0;
+    reference.xCm = 2.0;
+
+    HeadPose pose{};
+    pose.yawDeg = 15.0;
+    pose.pitchDeg = -1.0;
+    pose.rollDeg = -2.0;
+    pose.xCm = 2.5;
+
+    HeadPose relative = SubtractReference(pose, reference);
+
+    REQUIRE(relative.yawDeg == Approx(10.0));
+    REQUIRE(relative.pitchDeg == Approx(2.0));
+    REQUIRE(relative.rollDeg == Approx(-3.0));
+    REQUIRE(relative.xCm == Approx(0.5));
+}
+
+TEST_CASE("SubtractReference with a default reference is the identity", "[head_pose]") {
+    HeadPose pose{};
+    pose.yawDeg = 12.0;
+    pose.pitchDeg = -4.0;
+    pose.zCm = 55.0;
+
+    HeadPose relative = SubtractReference(pose, HeadPose{});
+
+    REQUIRE(relative.yawDeg == Approx(12.0));
+    REQUIRE(relative.pitchDeg == Approx(-4.0));
+    REQUIRE(relative.zCm == Approx(55.0));
+}

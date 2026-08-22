@@ -3,6 +3,7 @@
 #include "adaptive_filter.h"
 #include "body_visibility.h"
 #include "config.h"
+#include "head_pose.h"
 #include "tobii_source.h"
 
 // Owns the single process-wide tracking pipeline: TobiiSource -> AdaptiveFilterStep -> the
@@ -27,12 +28,19 @@ public:
 
     bool Enabled() const { return enabled_; }
     void SetEnabled(bool enabled) { enabled_ = enabled; }
-    void Recenter() { current_ = Offset{}; }
+
+    // Captures the current raw head pose (if one is available) as the new neutral
+    // reference and zeroes the applied offset, so "recenter" means "this head position is
+    // now straight ahead" rather than "snap back toward the tracker's own zero". If no
+    // pose is available (tracker disconnected), only the offset is reset and the previous
+    // reference is kept.
+    void Recenter();
 
 private:
     TobiiSource source_;
     TrackingConfig config_;
     BodyVisibilityConfig bodyVisibilityConfig_;
+    HeadPose reference_;
     Offset current_;
     bool enabled_ = false;
 };
