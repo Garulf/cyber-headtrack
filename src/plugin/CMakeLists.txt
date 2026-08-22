@@ -25,7 +25,7 @@ find_library(CHT_TOBII_STREAM_ENGINE_LIB
     REQUIRED
 )
 
-add_library(CyberHeadtrack SHARED main.cpp tobii_source.cpp)
+add_library(CyberHeadtrack SHARED main.cpp tobii_source.cpp tracking_state.cpp)
 target_include_directories(CyberHeadtrack PRIVATE "${CHT_TOBII_SDK_DIR}/include")
 target_link_libraries(CyberHeadtrack PRIVATE portable RED4ext.SDK "${CHT_TOBII_STREAM_ENGINE_LIB}")
 target_compile_features(CyberHeadtrack PRIVATE cxx_std_20)
