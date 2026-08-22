@@ -12,21 +12,30 @@ Tracker 5 and applies it as a first-person camera glance. No eye/gaze tracking i
   Windows recognizes the Eye Tracker 5 hardware in the first place. This mod does not
   replace that driver layer; it only talks to the tracker once it is enumerable.
 
-**On the Stream Engine SDK:** this mod links against and bundles Tobii's Stream Engine
-runtime (`tobii_stream_engine.dll`) directly in the plugin folder. Under the Tobii Core
-SDK and Tobii Gaming SDK Agreement (v1.2), §3.1 permits distributing Applications built
-on the Software Components -- including the Stream Engine -- for "Gaze Interaction Use"
-(using tracking data as interactive user input, which is what this mod does), and §3.3
-grants the sub-licensing rights needed to redistribute the Stream Engine DLL itself to
-end users as part of the Application. So no separate SDK download or install step is
-needed for the DLL; you only need the Game Hub/Experience driver described above for the
-hardware itself.
+**On the Stream Engine SDK:** this mod links against Tobii's Stream Engine import
+library at build time, and its runtime DLL (`tobii_stream_engine.dll`) is legally
+redistributable alongside the plugin. Under the Tobii Core SDK and Tobii Gaming SDK
+Agreement (v1.2), §3.1 permits distributing Applications built on the Software
+Components -- including the Stream Engine -- for "Gaze Interaction Use" (using tracking
+data as interactive user input, which is what this mod does), and §3.3 grants the
+sub-licensing rights needed to redistribute the Stream Engine DLL itself to end users as
+part of the Application. **The build does not currently copy this DLL into the plugin
+output folder automatically** -- as of v1 there is no CMake install/copy step that does
+this, so it's a manual packaging step: after building, copy
+`tobii_stream_engine.dll` from the Tobii SDK's `build/native/lib/x64/` directory (the
+layout of the `Tobii.StreamEngine.Native` NuGet package) into
+`red4ext/plugins/CyberHeadtrack/` next to the built plugin DLL. You do not need to
+install anything from Tobii's SDK beyond having that one file in place; you only need
+the Game Hub/Experience driver described above for the hardware itself.
 
 ## Install
 
-1. Copy `red4ext/plugins/CyberHeadtrack/` into your Cyberpunk 2077 install directory's
-   `red4ext/plugins/` folder. This includes the plugin DLL, the bundled
-   `tobii_stream_engine.dll`, and `config.toml`.
+1. Build the plugin, then copy `tobii_stream_engine.dll` from the Tobii SDK's
+   `build/native/lib/x64/` directory into `red4ext/plugins/CyberHeadtrack/` next to the
+   built plugin DLL (see the SDK note above -- this is a manual step, not something the
+   build does for you). Copy the resulting `red4ext/plugins/CyberHeadtrack/` folder
+   (plugin DLL, `tobii_stream_engine.dll`, and `config.toml`) into your Cyberpunk 2077
+   install directory's `red4ext/plugins/` folder.
 2. Copy `r6/scripts/CyberHeadtrack/` into your Cyberpunk 2077 install directory's
    `r6/scripts/` folder.
 3. Launch the game. Tracking is off by default.
