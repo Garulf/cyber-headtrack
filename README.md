@@ -8,6 +8,10 @@ Tracker 5 and applies it as a first-person camera glance. No eye/gaze tracking i
 
 - Cyberpunk 2077, with [RED4ext](https://github.com/WopsS/RED4ext) and
   [redscript](https://github.com/jac3km4/redscript) installed.
+- [Input Loader](https://github.com/jackhumbert/cyberpunk2077-input-loader)
+  ([Nexus](https://www.nexusmods.com/cyberpunk2077/mods/4575)), which merges this mod's
+  key bindings into the game's input configs without overwriting
+  `r6/config/inputUserMappings.xml`.
 - A Tobii Eye Tracker 5.
 - Tobii's own consumer software (Tobii Game Hub or Tobii Experience) installed, so
   Windows recognizes the Eye Tracker 5 hardware in the first place. This mod does not
@@ -31,31 +35,34 @@ the Game Hub/Experience driver described above for the hardware itself.
 
 ## Install
 
-1. Build the plugin, then copy `tobii_stream_engine.dll` from the Tobii SDK's
-   `build/native/lib/x64/` directory into `red4ext/plugins/CyberHeadtrack/` next to the
-   built plugin DLL (see the SDK note above -- this is a manual step, not something the
-   build does for you). Copy the resulting `red4ext/plugins/CyberHeadtrack/` folder
-   (plugin DLL, `tobii_stream_engine.dll`, and `config.toml`) into your Cyberpunk 2077
-   install directory's `red4ext/plugins/` folder.
-2. Copy `r6/scripts/CyberHeadtrack/` into your Cyberpunk 2077 install directory's
-   `r6/scripts/` folder.
-3. Launch the game. Tracking is off by default.
-4. Enable tracking. **v1 does not ship a keybind for this.** The native functions
-   `SetHeadtrackEnabled(enabled: Bool)` and `RecenterHeadtrack()` are registered and
-   callable from redscript (see `r6/scripts/CyberHeadtrack/CameraApply.reds`), but no
-   `.reds` script in this release wires them to a key press or an in-game menu -- you
-   would need to call them yourself, e.g. from another mod's console/binding, until a
-   keybind script is added.
+1. Build the plugin (Windows only, MSVC; the plugin target is off by default so the
+   portable library and its tests can build cross-platform):
 
-   The mechanism a future keybind script would use is a standard, externally verified
-   redscript pattern (not yet used in this codebase, whose only wrap is
-   `LocomotionEventsTransition.OnUpdate`): `@wrapMethod(PlayerPuppet) protected cb func OnAction(action:
-   ListenerAction, consumer: ListenerActionConsumer) -> Void`, checking
-   `ListenerAction.IsAction(action, n"YourBindingName")` together with
-   `ListenerAction.IsButtonJustPressed(action)`, paired with a custom binding registered
-   in `r6/config/inputUserMappings.xml` (or via a mod-input-loader framework, depending
-   on the RED4ext/redscript ecosystem's current convention at the time it's built). That
-   script is not part of this task and is not shipped in v1.
+   ```sh
+   cmake -S . -B build -DCHT_BUILD_PLUGIN=ON -DCHT_TOBII_SDK_DIR=C:/path/to/tobii-sdk
+   cmake --build build --config Release
+   ```
+
+   `CHT_TOBII_SDK_DIR` must point at an extracted Tobii Stream Engine SDK containing
+   `include/tobii/tobii.h` (the gated download from
+   [Tobii's developer site](https://developer.tobii.com/product-integration/stream-engine/)
+   or the `Tobii.StreamEngine.Native` NuGet package) -- configure fails with a clear
+   error if it's missing or wrong. The built plugin lands in
+   `build/bin/red4ext/plugins/CyberHeadtrack/`. Then copy `tobii_stream_engine.dll`
+   from the Tobii SDK's `build/native/lib/x64/` directory into that same folder, next
+   to the built plugin DLL (see the SDK note above -- this is a manual step, not
+   something the build does for you). Copy the resulting
+   `red4ext/plugins/CyberHeadtrack/` folder (plugin DLL, `tobii_stream_engine.dll`,
+   and `config.toml`) into your Cyberpunk 2077 install directory's
+   `red4ext/plugins/` folder.
+2. Copy `r6/scripts/CyberHeadtrack/` into your Cyberpunk 2077 install directory's
+   `r6/scripts/` folder, and `r6/input/CyberHeadtrack.xml` into `r6/input/` (read by
+   Input Loader; create the folder if it doesn't exist).
+3. Launch the game. Tracking is off by default.
+4. Press **F10** to toggle tracking on/off and **F8** to recenter the neutral head
+   pose. Both keys are unbound in the vanilla keyboard mappings. To rebind, edit the
+   `IK_*` ids in `r6/input/CyberHeadtrack.xml`; the keys only work on foot (the same
+   scope as the camera hook, see below).
 
 ## Configuration
 

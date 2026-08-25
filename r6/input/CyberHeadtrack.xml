@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<!-- CyberHeadtrack key bindings, merged into the game's input configs by Input Loader
+     (https://github.com/jackhumbert/cyberpunk2077-input-loader), which reads every
+     r6/input/*.xml. The append="true" includes make this merge-safe alongside other
+     mods, instead of overwriting r6/config/inputUserMappings.xml directly.
+
+     Default keys: F10 toggles tracking, F8 recenters. Both are unbound in the vanilla
+     keyboard mappings (F5/F9 quicksave/quickload, F11 photo mode are taken). To rebind,
+     change the IK_* ids below; valid names follow the game's EInputKey enum
+     (IK_F1..IK_F12, IK_NumPad0..IK_NumPad9, IK_A.., ...). -->
+<bindings>
+    <!-- inputContexts -->
+    <context name="CyberHeadtrack">
+        <action name="HeadtrackToggle" map="HeadtrackToggle_Button" />
+        <action name="HeadtrackRecenter" map="HeadtrackRecenter_Button" />
+    </context>
+
+    <!-- On-foot contexts only; the camera hook is on-foot only anyway. -->
+    <context name="Exploration" append="true">
+        <include name="CyberHeadtrack" />
+    </context>
+    <context name="Combat" append="true">
+        <include name="CyberHeadtrack" />
+    </context>
+
+    <!-- inputUserMappings -->
+    <mapping name="HeadtrackToggle_Button" type="Button">
+        <button id="IK_F10" />
+    </mapping>
+    <mapping name="HeadtrackRecenter_Button" type="Button">
+        <button id="IK_F8" />
+    </mapping>
+</bindings>
