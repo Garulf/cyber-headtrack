@@ -8,9 +8,10 @@ FetchContent_MakeAvailable(tomlplusplus)
 
 add_library(portable STATIC
     head_pose.cpp
-    adaptive_filter.cpp
+    one_euro_filter.cpp
     config.cpp
     body_visibility.cpp
+    engine_angles.cpp
 )
 target_include_directories(portable PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(portable PUBLIC cxx_std_20)
