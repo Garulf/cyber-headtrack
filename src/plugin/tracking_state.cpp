@@ -1,6 +1,5 @@
 #include "tracking_state.h"
 
-#include <algorithm>
 #include <exception>
 
 #include "plugin_log.h"
@@ -18,17 +17,23 @@ TrackingState& TrackingState::Instance() {
 }
 
 std::optional<std::string> TrackingState::Initialize(const std::filesystem::path& configPath) {
+    configPath_ = configPath;
     std::optional<std::string> configError;
+    if (!configPath.empty() && !std::filesystem::exists(configPath)) {
+        try {
+            SaveDefaultConfig(configPath);
+            PluginLog("wrote default config.toml");
+        } catch (const std::exception& error) {
+            PluginLog("could not write a default config.toml: %s", error.what());
+        }
+    }
     try {
         config_ = LoadConfig(configPath);
     } catch (const std::exception& error) {
         config_ = TrackingConfig{};
         configError = error.what();
     }
-    yawFilter_ = OneEuroFilter(config_.smoothingMinCutoffHz, config_.smoothingBeta);
-    pitchFilter_ = OneEuroFilter(config_.smoothingMinCutoffHz, config_.smoothingBeta);
-    rollFilter_ = OneEuroFilter(config_.smoothingMinCutoffHz, config_.smoothingBeta);
-    ResetFilters();
+    RebuildFilters();
     source_.Start();
     return configError;
 }
@@ -39,7 +44,12 @@ void TrackingState::Shutdown() {
 
 EngineAngles TrackingState::Angles() const {
     std::lock_guard lock(mutex_);
-    return ToEngineAngles(current_, config_.invert);
+    return ToEngineAngles(current_, Active().invert);
+}
+
+Lean TrackingState::CurrentLean() const {
+    std::lock_guard lock(mutex_);
+    return currentLean_;
 }
 
 double TrackingState::BodyHeightOffsetMeters() const {
@@ -74,12 +84,12 @@ void TrackingState::Update(double dtSeconds) {
     }
 
     Rotation target;
+    Lean targetLean;
     if (auto pose = source_.Latest()) {
         secondsWithoutPose_ = 0.0;
         const HeadPose relative = SubtractReference(*pose, reference_);
-        target.yaw = std::clamp(relative.yawDeg, -config_.maxYawDeg, config_.maxYawDeg);
-        target.pitch = std::clamp(relative.pitchDeg, -config_.maxPitchDeg, config_.maxPitchDeg);
-        target.roll = relative.rollDeg;
+        target = ShapeHeadRotation(relative, Active());
+        targetLean = ShapeHeadLean(relative, Active());
     } else {
         secondsWithoutPose_ += dtSeconds;
         if (secondsWithoutPose_ < kPoseLossGraceSeconds) {
@@ -90,6 +100,9 @@ void TrackingState::Update(double dtSeconds) {
     current_.yaw = yawFilter_.Filter(target.yaw, dtSeconds);
     current_.pitch = pitchFilter_.Filter(target.pitch, dtSeconds);
     current_.roll = rollFilter_.Filter(target.roll, dtSeconds);
+    currentLean_.sideCm = sideFilter_.Filter(targetLean.sideCm, dtSeconds);
+    currentLean_.upCm = upFilter_.Filter(targetLean.upCm, dtSeconds);
+    currentLean_.forwardCm = forwardFilter_.Filter(targetLean.forwardCm, dtSeconds);
     LogStatusPeriodically(dtSeconds);
 }
 
@@ -99,9 +112,12 @@ void TrackingState::LogStatusPeriodically(double dtSeconds) {
         return;
     }
     secondsSinceStatusLog_ = 0.0;
-    const EngineAngles angles = ToEngineAngles(current_, config_.invert);
-    PluginLog("status: pose=%s yaw=%.1f pitch=%.1f roll=%.1f",
-              source_.Latest() ? "yes" : "no", angles.yaw, angles.pitch, angles.roll);
+    const EngineAngles angles = ToEngineAngles(current_, Active().invert);
+    PluginLog("status: profile=%s pose=%s yaw=%.1f pitch=%.1f roll=%.1f lean side=%.1f up=%.1f "
+              "forward=%.1f cm",
+              profile_ == Profile::Vehicle ? "vehicle" : "on_foot",
+              source_.Latest() ? "yes" : "no", angles.yaw, angles.pitch, angles.roll,
+              currentLean_.sideCm, currentLean_.upCm, currentLean_.forwardCm);
 }
 
 void TrackingState::Recenter() {
@@ -114,9 +130,72 @@ void TrackingState::Recenter() {
     ResetFilters();
 }
 
+std::optional<double> TrackingState::Setting(std::string_view key) const {
+    std::lock_guard lock(mutex_);
+    return GetConfigValue(config_, key);
+}
+
+std::string TrackingState::SetSetting(std::string_view key, double value) {
+    std::lock_guard lock(mutex_);
+    try {
+        SetConfigValue(config_, key, value);
+    } catch (const std::exception& error) {
+        return error.what();
+    }
+    RebuildFilters();
+    return {};
+}
+
+std::string TrackingState::SaveSettings() {
+    std::lock_guard lock(mutex_);
+    try {
+        SaveConfig(configPath_, config_);
+    } catch (const std::exception& error) {
+        PluginLog("saving settings failed: %s", error.what());
+        return error.what();
+    }
+    PluginLog("settings saved to config.toml");
+    return {};
+}
+
+Profile TrackingState::ActiveProfile() const {
+    std::lock_guard lock(mutex_);
+    return profile_;
+}
+
+void TrackingState::SetActiveProfile(Profile profile) {
+    std::lock_guard lock(mutex_);
+    if (profile == profile_) {
+        return;
+    }
+    profile_ = profile;
+    PluginLog("profile switched to %s", profile == Profile::Vehicle ? "vehicle" : "on_foot");
+    RebuildFilters();
+}
+
+void TrackingState::RebuildFilters() {
+    const ProfileConfig& active = Active();
+    yawFilter_ = OneEuroFilter(active.smoothingMinCutoffHz, active.smoothingBeta);
+    pitchFilter_ = OneEuroFilter(active.smoothingMinCutoffHz, active.smoothingBeta);
+    rollFilter_ = OneEuroFilter(active.smoothingMinCutoffHz, active.smoothingBeta);
+    yawFilter_.Reset(current_.yaw);
+    pitchFilter_.Reset(current_.pitch);
+    rollFilter_.Reset(current_.roll);
+    sideFilter_ = OneEuroFilter(active.leanSmoothingMinCutoffHz, active.leanSmoothingBeta);
+    upFilter_ = OneEuroFilter(active.leanSmoothingMinCutoffHz, active.leanSmoothingBeta);
+    forwardFilter_ = OneEuroFilter(active.leanSmoothingMinCutoffHz, active.leanSmoothingBeta);
+    sideFilter_.Reset(currentLean_.sideCm);
+    upFilter_.Reset(currentLean_.upCm);
+    forwardFilter_.Reset(currentLean_.forwardCm);
+}
+
 void TrackingState::ResetFilters() {
     current_ = Rotation{};
+    currentLean_ = Lean{};
     yawFilter_.Reset(0.0);
     pitchFilter_.Reset(0.0);
     rollFilter_.Reset(0.0);
+    sideFilter_.Reset(0.0);
+    upFilter_.Reset(0.0);
+    forwardFilter_.Reset(0.0);
 }
