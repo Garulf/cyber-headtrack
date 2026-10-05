@@ -12,69 +12,99 @@ Tracker 5 and applies it as a first-person camera glance. No eye/gaze tracking i
   ([Nexus](https://www.nexusmods.com/cyberpunk2077/mods/4575)), which merges this mod's
   key bindings into the game's input configs without overwriting
   `r6/config/inputUserMappings.xml`.
+- Optional: [Cyber Engine Tweaks](https://github.com/maximegmd/CyberEngineTweaks) for the
+  in-game settings window (see Configuration).
 - A Tobii Eye Tracker 5.
 - Tobii's own consumer software (Tobii Game Hub or Tobii Experience) installed, so
   Windows recognizes the Eye Tracker 5 hardware in the first place. This mod does not
   replace that driver layer; it only talks to the tracker once it is enumerable.
 
-**On the Stream Engine SDK:** this mod links against Tobii's Stream Engine import
-library at build time, and its runtime DLL (`tobii_stream_engine.dll`) is legally
-redistributable alongside the plugin. Under the Tobii Core SDK and Tobii Gaming SDK
-Agreement (v1.2), §3.1 permits distributing Applications built on the Software
-Components -- including the Stream Engine -- for "Gaze Interaction Use" (using tracking
-data as interactive user input, which is what this mod does), and §3.3 grants the
-sub-licensing rights needed to redistribute the Stream Engine DLL itself to end users as
-part of the Application. **The build does not currently copy this DLL into the plugin
-output folder automatically** -- as of v1 there is no CMake install/copy step that does
-this, so it's a manual packaging step: after building, copy
-`tobii_stream_engine.dll` from the Tobii SDK's `build/native/lib/x64/` directory (the
-layout of the `Tobii.StreamEngine.Native` NuGet package) into
-`red4ext/plugins/CyberHeadtrack/` next to the built plugin DLL. You do not need to
-install anything from Tobii's SDK beyond having that one file in place; you only need
-the Game Hub/Experience driver described above for the hardware itself.
-
 ## Install
 
-1. Build the plugin (Windows only, MSVC; the plugin target is off by default so the
-   portable library and its tests can build cross-platform):
-
-   ```sh
-   cmake -S . -B build -DCHT_BUILD_PLUGIN=ON -DCHT_TOBII_SDK_DIR=C:/path/to/tobii-sdk
-   cmake --build build --config Release
-   ```
-
-   `CHT_TOBII_SDK_DIR` must point at an extracted Tobii Stream Engine SDK containing
-   `include/tobii/tobii.h` (the gated download from
-   [Tobii's developer site](https://developer.tobii.com/product-integration/stream-engine/)
-   or the `Tobii.StreamEngine.Native` NuGet package) -- configure fails with a clear
-   error if it's missing or wrong. The built plugin lands in
-   `build/bin/red4ext/plugins/CyberHeadtrack/`. Then copy `tobii_stream_engine.dll`
-   from the Tobii SDK's `build/native/lib/x64/` directory into that same folder, next
-   to the built plugin DLL (see the SDK note above -- this is a manual step, not
-   something the build does for you). Copy the resulting
-   `red4ext/plugins/CyberHeadtrack/` folder (plugin DLL, `tobii_stream_engine.dll`,
-   and `config.toml`) into your Cyberpunk 2077 install directory's
-   `red4ext/plugins/` folder.
-2. Copy `r6/scripts/CyberHeadtrack/` into your Cyberpunk 2077 install directory's
-   `r6/scripts/` folder, and `r6/input/CyberHeadtrack.xml` into `r6/input/` (read by
-   Input Loader; create the folder if it doesn't exist).
+1. Install the requirements above.
+2. Download `CyberHeadtrack-<version>.zip` and extract it into your Cyberpunk 2077 install
+   folder (the one containing `bin`, `r6` and `red4ext`), merging folders when asked. A
+   mod manager such as Vortex or Mod Organizer 2 can install the zip as-is.
 3. Launch the game. Tracking is off by default.
 4. Press **F10** to toggle tracking on/off and **End** to recenter the neutral head
    pose. Both keys are unbound in the vanilla keyboard mappings. To rebind, edit the
    `IK_*` ids in `r6/input/CyberHeadtrack.xml`. The keys work on foot and in
    vehicles, as driver or passenger.
 
+To uninstall, delete `red4ext/plugins/CyberHeadtrack/`, `r6/scripts/CyberHeadtrack/`,
+`r6/input/CyberHeadtrack.xml` and `bin/x64/plugins/cyber_engine_tweaks/mods/CyberHeadtrack/`.
+
+The package ships Tobii's `tobii_stream_engine.dll` next to the plugin, as the Tobii Core
+SDK and Tobii Gaming SDK Agreement allows: §3.1 permits distributing applications built
+on the SDK for Gaze Interaction Use (Tobii data as interactive input in games), and §3.3
+permits sub-licensing the runtime components to end users in object-code form. The
+agreement is included as `tobii_stream_engine_LICENSE.pdf`.
+
+## Building from source
+
+Windows only, with MSVC; the plugin target is off by default so the portable library and
+its tests also build on Linux.
+
+```sh
+cmake -S . -B build -DCHT_BUILD_PLUGIN=ON -DCHT_TOBII_SDK_DIR=C:/path/to/tobii-sdk/build/native
+cmake --build build --config Release
+ctest --test-dir build -C Release
+cd build && cpack -C Release
+```
+
+`CHT_TOBII_SDK_DIR` must point at a Tobii Stream Engine SDK containing
+`include/tobii/tobii.h`, its import library and `tobii_stream_engine.dll`. The
+[`Tobii.StreamEngine.Native`](https://www.nuget.org/packages/Tobii.StreamEngine.Native)
+NuGet package works: rename the `.nupkg` to `.zip`, extract it, and use its
+`build/native` folder. `cpack` writes `CyberHeadtrack-<version>.zip` in `build/`.
+
 ## Configuration
 
-Edit `red4ext/plugins/CyberHeadtrack/config.toml`:
+Settings come in two profiles, `[on_foot]` and `[vehicle]` (any car or motorcycle, as
+driver or passenger). The mod switches between them when V gets in or out of a vehicle,
+so you can, for example, allow a wider glance while driving than in a firefight.
+
+With Cyber Engine Tweaks installed, open its overlay and use the **CyberHeadtrack** window:
+it has a tracking toggle, a recenter button, a profile selector (the profile in use is
+marked), and every setting below. Changes apply immediately and are written to
+`config.toml` when you close the overlay.
+
+Without it, edit `red4ext/plugins/CyberHeadtrack/config.toml` and restart the game. The
+plugin creates that file with the defaults on first launch, and installing a newer version
+leaves it alone. Each
+profile is a table with these keys; keys placed above both tables apply to both profiles
+unless a table overrides them:
 
 - `smoothing_min_cutoff_hz`: how much the view is smoothed while your head is still.
   Lower values steady a jittery view at the cost of more lag on slow movements.
 - `smoothing_beta`: how quickly smoothing backs off as your head moves faster. Raise it
   if quick turns feel like they trail behind; lower it if fast movements look jittery.
-- `max_yaw_deg` / `max_pitch_deg`: clamps on how far the camera can rotate (0 to 180).
+- `yaw_scale` / `pitch_scale` / `roll_scale`: multiply your head movement on that axis
+  (0 to 10). At 2.5, turning your head 20 degrees turns the view 50, which helps because
+  you can't turn far from the screen the tracker sits under. 0 locks the axis.
+- `max_yaw_deg` / `max_pitch_deg` / `max_roll_deg`: how far the view may rotate on that
+  axis after scaling (0 to 180).
 - `invert_yaw` / `invert_pitch` / `invert_roll`: set to `true` if the camera turns the
   opposite way to your head on that axis.
+- `lean_enabled`: move the camera with your head position (leaning sideways, rising,
+  leaning toward or away from the screen), not just its rotation. On by default on foot
+  and off in vehicles, where the camera easily ends up in the roof or windshield.
+- `lean_smoothing_min_cutoff_hz` / `lean_smoothing_beta`: smoothing for lean, working
+  like the rotation pair above. The tracker's position data is noisier than its rotation,
+  so the default smooths lean more.
+- `lean_scale`: multiplies head movement (0 to 10); at 1.0, 10 cm of head movement moves
+  the camera 10 cm.
+- `max_lean_side_cm` / `max_lean_up_cm` / `max_lean_forward_cm`: how far the camera may
+  move on that axis (0 to 50 cm). There is no collision check, so large values let the
+  camera pass through walls and into V's own head.
+- `invert_lean_side` / `invert_lean_up` / `invert_lean_forward`: flip a lean axis that
+  moves the wrong way.
+- `ads_tracking_off`: ease head rotation and lean out while aiming down sights, so you
+  look straight through the sights, and back in when you stop aiming.
+- `ads_ease_seconds`: how long that easing takes (0 to 2, 0 = instant).
+- `ads_eye` / `ads_eye_offset_cm`: when tracking stays on while aiming, shift the view
+  sideways toward your aiming eye (`-1` left, `0` centre, `1` right) by this many
+  centimeters, about half the distance between your eyes.
 
 `smoothing_min_cutoff_hz` must be greater than 0 and `smoothing_beta` 0 or more. If the
 file fails to parse or holds an out-of-range value, the plugin falls back to the defaults
@@ -82,10 +112,14 @@ and writes the reason to the RED4ext log (`red4ext/logs/`).
 
 ## Scope
 
-v1 applies head tracking as a direct camera rotation -- your aim/weapon direction moves
-with the camera, the same way flight-sim TrackIR support works. A separate effort is
-investigating whether aim can be kept independent of the camera (glance without changing
-where you'd shoot).
+Head tracking moves the first-person camera independently of V's body and gun. Shots
+from hitscan weapons (most guns) still land where the gun points, and the crosshair is
+drawn at that point rather than at screen centre. Smart-weapon lock-on, enemy highlighting
+and projectile weapons such as launchers still follow the view.
+
+The shot correction finds the engine code it patches by byte signature when the game
+starts. It is built for patch 2.31; if a later patch changes that code, the plugin logs
+it and shots follow the view again instead of anything breaking.
 
 Tracking applies to the first-person camera on foot and in first-person vehicle views as
 driver or passenger. It holds still during a few brief on-foot animations that run outside
