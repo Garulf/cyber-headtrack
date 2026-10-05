@@ -1,8 +1,58 @@
 # cyber-headtrack tracking config
-smoothing_min_cutoff_hz = 1.0
+# [on_foot] applies while walking; [vehicle] while seated in any car or bike.
+# lean_* moves the camera with your head position; it starts off in vehicles.
+# ads_eye: -1 left, 0 centre, 1 right.
+
+[on_foot]
+smoothing_min_cutoff_hz = 1
 smoothing_beta = 0.1
-max_yaw_deg = 45.0
-max_pitch_deg = 45.0
+max_yaw_deg = 45
+max_pitch_deg = 45
+max_roll_deg = 45
+yaw_scale = 1
+pitch_scale = 1
+roll_scale = 1
 invert_yaw = false
 invert_pitch = false
 invert_roll = false
+lean_enabled = true
+lean_smoothing_min_cutoff_hz = 0.5
+lean_smoothing_beta = 0.05
+lean_scale = 1
+max_lean_side_cm = 20
+max_lean_up_cm = 10
+max_lean_forward_cm = 15
+invert_lean_side = false
+invert_lean_up = false
+ads_tracking_off = false
+ads_ease_seconds = 0.25
+ads_eye = 1
+ads_eye_offset_cm = 3.2
+invert_lean_forward = false
+
+[vehicle]
+smoothing_min_cutoff_hz = 1
+smoothing_beta = 0.1
+max_yaw_deg = 45
+max_pitch_deg = 45
+max_roll_deg = 45
+yaw_scale = 1
+pitch_scale = 1
+roll_scale = 1
+invert_yaw = false
+invert_pitch = false
+invert_roll = false
+lean_enabled = false
+lean_smoothing_min_cutoff_hz = 0.5
+lean_smoothing_beta = 0.05
+lean_scale = 1
+max_lean_side_cm = 20
+max_lean_up_cm = 10
+max_lean_forward_cm = 15
+invert_lean_side = false
+invert_lean_up = false
+ads_tracking_off = false
+ads_ease_seconds = 0.25
+ads_eye = 1
+ads_eye_offset_cm = 3.2
+invert_lean_forward = false
