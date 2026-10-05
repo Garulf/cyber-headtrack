@@ -12,6 +12,9 @@ add_library(portable STATIC
     config.cpp
     body_visibility.cpp
     engine_angles.cpp
+    shaping.cpp
+    aim_math.cpp
+    pattern_scan.cpp
 )
 target_include_directories(portable PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(portable PUBLIC cxx_std_20)
