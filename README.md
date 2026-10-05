@@ -59,22 +59,26 @@ the Game Hub/Experience driver described above for the hardware itself.
    `r6/scripts/` folder, and `r6/input/CyberHeadtrack.xml` into `r6/input/` (read by
    Input Loader; create the folder if it doesn't exist).
 3. Launch the game. Tracking is off by default.
-4. Press **F10** to toggle tracking on/off and **F8** to recenter the neutral head
+4. Press **F10** to toggle tracking on/off and **End** to recenter the neutral head
    pose. Both keys are unbound in the vanilla keyboard mappings. To rebind, edit the
-   `IK_*` ids in `r6/input/CyberHeadtrack.xml`; the keys only work on foot (the same
-   scope as the camera hook, see below).
+   `IK_*` ids in `r6/input/CyberHeadtrack.xml`. The keys work on foot and in
+   vehicles, as driver or passenger.
 
 ## Configuration
 
 Edit `red4ext/plugins/CyberHeadtrack/config.toml`:
 
-- `rot_sensitivity`: higher values require more head movement to reach the same
-  in-game rotation.
-- `rot_deadzone_deg`: rotation movement below this threshold is ignored.
-- `max_yaw_deg` / `max_pitch_deg`: clamps on how far the camera can rotate.
-- `lean_sensitivity` / `lean_deadzone_cm`: present for forward-compatibility with a
-  future positional-lean feature; v1 applies rotation only (lean is an explicit v1
-  non-goal), so these two values currently have no in-game effect.
+- `smoothing_min_cutoff_hz`: how much the view is smoothed while your head is still.
+  Lower values steady a jittery view at the cost of more lag on slow movements.
+- `smoothing_beta`: how quickly smoothing backs off as your head moves faster. Raise it
+  if quick turns feel like they trail behind; lower it if fast movements look jittery.
+- `max_yaw_deg` / `max_pitch_deg`: clamps on how far the camera can rotate (0 to 180).
+- `invert_yaw` / `invert_pitch` / `invert_roll`: set to `true` if the camera turns the
+  opposite way to your head on that axis.
+
+`smoothing_min_cutoff_hz` must be greater than 0 and `smoothing_beta` 0 or more. If the
+file fails to parse or holds an out-of-range value, the plugin falls back to the defaults
+and writes the reason to the RED4ext log (`red4ext/logs/`).
 
 ## Scope
 
@@ -83,20 +87,19 @@ with the camera, the same way flight-sim TrackIR support works. A separate effor
 investigating whether aim can be kept independent of the camera (glance without changing
 where you'd shoot).
 
-Tracking is applied on foot only. The camera hook wraps
-`LocomotionEventsTransition.OnUpdate`, the per-frame update for the active on-foot
-locomotion state, since vanilla `PlayerPuppet` has no `OnUpdate` of its own to wrap.
-Practically this means:
+Tracking applies to the first-person camera on foot and in first-person vehicle views as
+driver or passenger. It holds still during a few brief on-foot animations that run outside
+normal locomotion, such as climbing and the superhero landing. It pauses while a
+third-person vehicle camera is active, since that camera is a different component, and
+picks up again when you switch back to first person.
 
-- Head tracking does **not** apply while driving or riding in a vehicle.
-- Head tracking briefly stops applying during a few transient player states outside the
-  normal locomotion state machine, such as climbing and the superhero-landing animation.
-  It resumes automatically once you're back in normal on-foot locomotion.
+If the tracker loses your head for more than half a second, the view eases back to center
+until tracking resumes.
 
-A pitch-gated body-visibility offset (raising and pulling back the camera as you look
-down) is applied on top of the rotation so V's body and clothes stay in frame instead of
-clipping through the first-person view; this is tuned by the built-in constants in
-`CameraApply.reds`, not by `config.toml`.
+On foot, a pitch-gated body-visibility offset (raising and pulling back the camera as you
+tilt your head down) is applied on top of the rotation so V's body and clothes stay in
+frame instead of clipping through the first-person view. It is off while seated in a
+vehicle, and its limits are built into the plugin rather than `config.toml`.
 
 ## License
 
