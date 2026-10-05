@@ -4,8 +4,9 @@
      r6/input/*.xml. The append="true" includes make this merge-safe alongside other
      mods, instead of overwriting r6/config/inputUserMappings.xml directly.
 
-     Default keys: F10 toggles tracking, F8 recenters. Both are unbound in the vanilla
-     keyboard mappings (F5/F9 quicksave/quickload, F11 photo mode are taken). To rebind,
+     Default keys: F10 toggles tracking, End recenters. Both are unbound in the vanilla
+     keyboard mappings, and End stays clear of the F-keys that overlays such as DLSS and
+     ReShade tend to claim. To rebind,
      change the IK_* ids below; valid names follow the game's EInputKey enum
      (IK_F1..IK_F12, IK_NumPad0..IK_NumPad9, IK_A.., ...). -->
 <bindings>
@@ -15,11 +16,23 @@
         <action name="HeadtrackRecenter" map="HeadtrackRecenter_Button" />
     </context>
 
-    <!-- On-foot contexts only; the camera hook is on-foot only anyway. -->
+    <!-- On foot, plus every driver/passenger context so the keys work in vehicles. -->
     <context name="Exploration" append="true">
         <include name="CyberHeadtrack" />
     </context>
     <context name="Combat" append="true">
+        <include name="CyberHeadtrack" />
+    </context>
+    <context name="VehicleDriveBase" append="true">
+        <include name="CyberHeadtrack" />
+    </context>
+    <context name="VehiclePassenger" append="true">
+        <include name="CyberHeadtrack" />
+    </context>
+    <context name="BaseVehicleDriverCombat" append="true">
+        <include name="CyberHeadtrack" />
+    </context>
+    <context name="VehicleCombat" append="true">
         <include name="CyberHeadtrack" />
     </context>
 
@@ -28,6 +41,6 @@
         <button id="IK_F10" />
     </mapping>
     <mapping name="HeadtrackRecenter_Button" type="Button">
-        <button id="IK_F8" />
+        <button id="IK_End" />
     </mapping>
 </bindings>
