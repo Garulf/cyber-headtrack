@@ -2,11 +2,17 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdarg>
+#include <cstdio>
 #include <filesystem>
 
+#include "plugin_log.h"
 #include "tracking_state.h"
 
 namespace {
+
+const RED4ext::v1::Sdk* gSdk = nullptr;
+RED4ext::v1::PluginHandle gHandle = nullptr;
 
 // RED4ext's PluginHandle is the plugin DLL's own HMODULE (Api/v1/PluginHandle.hpp), so
 // GetModuleFileNameW resolves the DLL's on-disk path. The config lives next to the DLL;
@@ -22,22 +28,27 @@ std::filesystem::path ConfigPathForPlugin(RED4ext::v1::PluginHandle aHandle) {
 
 void GetHeadtrackYaw(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t) {
     aFrame->code++;
-    if (aOut) *aOut = TrackingState::Instance().Yaw();
+    if (aOut) *aOut = static_cast<float>(TrackingState::Instance().Angles().yaw);
 }
 
 void GetHeadtrackPitch(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t) {
     aFrame->code++;
-    if (aOut) *aOut = TrackingState::Instance().Pitch();
+    if (aOut) *aOut = static_cast<float>(TrackingState::Instance().Angles().pitch);
 }
 
 void GetHeadtrackRoll(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t) {
     aFrame->code++;
-    if (aOut) *aOut = TrackingState::Instance().Roll();
+    if (aOut) *aOut = static_cast<float>(TrackingState::Instance().Angles().roll);
 }
 
-void GetHeadtrackBodyVisibilityBlend(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t) {
+void GetHeadtrackBodyHeightOffset(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t) {
     aFrame->code++;
-    if (aOut) *aOut = TrackingState::Instance().BodyVisibilityBlend();
+    if (aOut) *aOut = static_cast<float>(TrackingState::Instance().BodyHeightOffsetMeters());
+}
+
+void GetHeadtrackBodyDepthOffset(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t) {
+    aFrame->code++;
+    if (aOut) *aOut = static_cast<float>(TrackingState::Instance().BodyDepthOffsetMeters());
 }
 
 void GetHeadtrackEnabled(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t) {
@@ -57,6 +68,13 @@ void RecenterHeadtrack(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void
     TrackingState::Instance().Recenter();
 }
 
+void HeadtrackLog(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t) {
+    RED4ext::CString message;
+    RED4ext::GetParameter(aFrame, &message);
+    aFrame->code++;
+    PluginLog("[script] %s", message.c_str());
+}
+
 // Per-frame update, registered as a custom "Running" game state. RED4ext calls OnUpdate
 // every frame while the game's running state is active; for the Running state the return
 // value is documented as ignored (RED4ext.SDK Api/v1/GameState.hpp).
@@ -66,11 +84,28 @@ bool OnRunningUpdate(RED4ext::CGameApplication*) {
     const auto now = Clock::now();
     const double dtSeconds = std::chrono::duration<double>(now - lastFrame).count();
     lastFrame = now;
+    static bool firstUpdate = true;
+    if (firstUpdate) {
+        firstUpdate = false;
+        PluginLog("running-state update hook is ticking");
+    }
     TrackingState::Instance().Update(std::min(dtSeconds, 0.25));
     return false;
 }
 
 }  // namespace
+
+void PluginLog(const char* format, ...) {
+    if (gSdk == nullptr) {
+        return;
+    }
+    char buffer[1024];
+    va_list args;
+    va_start(args, format);
+    std::vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    gSdk->logger->Info(gHandle, buffer);
+}
 
 RED4EXT_C_EXPORT void RED4EXT_CALL RegisterTypes() {
 }
@@ -96,10 +131,15 @@ RED4EXT_C_EXPORT void RED4EXT_CALL PostRegisterTypes() {
     roll->SetReturnType("Float");
     rtti->RegisterFunction(roll);
 
-    auto bodyBlend = RED4ext::CGlobalFunction::Create("GetHeadtrackBodyVisibilityBlend", "GetHeadtrackBodyVisibilityBlend", &GetHeadtrackBodyVisibilityBlend);
-    bodyBlend->flags = flags;
-    bodyBlend->SetReturnType("Float");
-    rtti->RegisterFunction(bodyBlend);
+    auto bodyHeight = RED4ext::CGlobalFunction::Create("GetHeadtrackBodyHeightOffset", "GetHeadtrackBodyHeightOffset", &GetHeadtrackBodyHeightOffset);
+    bodyHeight->flags = flags;
+    bodyHeight->SetReturnType("Float");
+    rtti->RegisterFunction(bodyHeight);
+
+    auto bodyDepth = RED4ext::CGlobalFunction::Create("GetHeadtrackBodyDepthOffset", "GetHeadtrackBodyDepthOffset", &GetHeadtrackBodyDepthOffset);
+    bodyDepth->flags = flags;
+    bodyDepth->SetReturnType("Float");
+    rtti->RegisterFunction(bodyDepth);
 
     auto getEnabled = RED4ext::CGlobalFunction::Create("GetHeadtrackEnabled", "GetHeadtrackEnabled", &GetHeadtrackEnabled);
     getEnabled->flags = flags;
@@ -114,6 +154,11 @@ RED4EXT_C_EXPORT void RED4EXT_CALL PostRegisterTypes() {
     auto recenter = RED4ext::CGlobalFunction::Create("RecenterHeadtrack", "RecenterHeadtrack", &RecenterHeadtrack);
     recenter->flags = flags;
     rtti->RegisterFunction(recenter);
+
+    auto log = RED4ext::CGlobalFunction::Create("HeadtrackLog", "HeadtrackLog", &HeadtrackLog);
+    log->flags = flags;
+    log->AddParam("String", "message");
+    rtti->RegisterFunction(log);
 }
 
 RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
@@ -121,11 +166,16 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
                                          const RED4ext::v1::Sdk* aSdk) {
     switch (aReason) {
     case RED4ext::v1::EMainReason::Load: {
+        gSdk = aSdk;
+        gHandle = aHandle;
+        PluginLog("loaded");
         auto rtti = RED4ext::CRTTISystem::Get();
         rtti->AddRegisterCallback(RegisterTypes);
         rtti->AddPostRegisterCallback(PostRegisterTypes);
 
-        TrackingState::Instance().Initialize(ConfigPathForPlugin(aHandle));
+        if (auto configError = TrackingState::Instance().Initialize(ConfigPathForPlugin(aHandle))) {
+            PluginLog("config.toml ignored, using defaults: %s", configError->c_str());
+        }
 
         RED4ext::v1::GameState runningState{
             .OnEnter = nullptr,
@@ -137,6 +187,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
     }
     case RED4ext::v1::EMainReason::Unload: {
         TrackingState::Instance().Shutdown();
+        gSdk = nullptr;
         break;
     }
     }
@@ -146,7 +197,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
 
 RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo) {
     aInfo->name = L"CyberHeadtrack";
-    aInfo->author = L"";
+    aInfo->author = L"Garulf";
     aInfo->version = RED4EXT_V1_SEMVER(0, 1, 0);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;

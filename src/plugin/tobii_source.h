@@ -1,7 +1,10 @@
 #pragma once
 
-#include <chrono>
+#include <mutex>
 #include <optional>
+#include <stop_token>
+#include <string>
+#include <thread>
 
 #include "head_pose.h"
 
@@ -11,9 +14,9 @@ struct tobii_device_t;
 // Wraps the Tobii Stream Engine SDK's head-pose stream (Tobii Eye Tracker 5, head pose only
 // -- no gaze/eye data is ever read from the SDK). Not unit-testable without hardware.
 //
-// Threading contract: Start(), Stop(), Poll(), and Latest() must all be called from the
-// same thread. The Stream Engine invokes the head-pose callback synchronously inside
-// tobii_device_process_callbacks (i.e. inside Poll()), so no locking is needed.
+// All Stream Engine calls (connect, device enumeration, callback pumping, reconnect) run on a
+// private worker thread, because several of them block for a noticeable time and must never
+// stall the game's main thread. Latest() is the only cross-thread access and is mutex-guarded.
 class TobiiSource {
 public:
     TobiiSource() = default;
@@ -22,21 +25,13 @@ public:
     TobiiSource(const TobiiSource&) = delete;
     TobiiSource& operator=(const TobiiSource&) = delete;
 
-    // Initializes the Tobii API, finds the first available device, and subscribes to head
-    // pose. Returns false if no device was found or the API failed to initialize; does not
-    // throw. Safe to call again after a failed Start() once a tracker becomes available.
-    bool Start();
+    // Starts the worker thread, which connects to the first available tracker and keeps
+    // retrying on a low-frequency timer until one is found or the connection recovers.
+    // Calling Start() while already running does nothing.
+    void Start();
 
-    // Unsubscribes and releases the Tobii API. Safe to call even if Start() was never
-    // called or already failed.
+    // Stops the worker thread and releases the Tobii API. Safe to call repeatedly.
     void Stop();
-
-    // Must be called periodically (e.g. once per game frame) to pump Tobii's callback queue.
-    // While unsubscribed (Start() never succeeded, or Stop() after a failure) it instead
-    // retries Start() on a low-frequency timer, so a tracker plugged in after the game
-    // launched is picked up without a retry storm. Mid-session connection failures are
-    // likewise retried via tobii_device_reconnect on the same low-frequency timer.
-    void Poll();
 
     // Returns the most recent mapped head pose, or std::nullopt if no valid sample has been
     // received yet or the tracker is currently reporting invalid data.
@@ -45,12 +40,18 @@ public:
 private:
     friend struct TobiiSourceCallbacks;
 
-    // Returns true at most once per retry interval; arms the interval when it fires.
-    bool RetryDue();
+    void Run(std::stop_token stop);
+    bool Connect();
+    void Disconnect();
+    void Publish(std::optional<HeadPose> pose);
+    void ReportFailure(const char* step, int error);
 
-    std::chrono::steady_clock::time_point nextRetry_{};
+    std::jthread worker_;
     tobii_api_t* api_ = nullptr;
     tobii_device_t* device_ = nullptr;
-    bool subscribed_ = false;
+    std::string lastFailure_;
+    bool poseValid_ = false;
+
+    mutable std::mutex latestMutex_;
     std::optional<HeadPose> latest_;
 };

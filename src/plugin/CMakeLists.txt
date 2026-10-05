@@ -2,7 +2,7 @@ include(FetchContent)
 FetchContent_Declare(
     red4ext_sdk
     GIT_REPOSITORY https://github.com/WopsS/RED4ext.SDK.git
-    GIT_TAG master
+    GIT_TAG ad7277714ad30d6885d7050c5ba24fa0102f6920
 )
 FetchContent_MakeAvailable(red4ext_sdk)
 
@@ -35,7 +35,7 @@ target_compile_definitions(CyberHeadtrack PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 
 set_target_properties(CyberHeadtrack PROPERTIES
     PREFIX ""
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/red4ext/plugins/CyberHeadtrack"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/red4ext/plugins/CyberHeadtrack/$<0:>"
 )
 
 if(MSVC)
