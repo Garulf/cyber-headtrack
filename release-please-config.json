@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "e89d41661a67c1ff72063227afff9b6cc3d8670a",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "cyber-headtrack",
+      "extra-files": ["CMakeLists.txt"]
+    }
+  }
+}

@@ -1,0 +1,25 @@
+name: build-mod
+description: Build the RED4ext plugin, run the tests and package the mod zip into build/
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch the Tobii Stream Engine SDK
+      shell: pwsh
+      run: |
+        $version = '2.2.2.363'
+        Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/tobii.streamengine.native/$version/tobii.streamengine.native.$version.nupkg" -OutFile tobii.zip
+        Expand-Archive tobii.zip tobii-sdk
+    - name: Configure
+      shell: pwsh
+      run: cmake -S . -B build -A x64 -DCHT_BUILD_PLUGIN=ON "-DCHT_TOBII_SDK_DIR=${{ github.workspace }}/tobii-sdk/build/native"
+    - name: Build
+      shell: pwsh
+      run: cmake --build build --config Release --parallel
+    - name: Test
+      shell: pwsh
+      run: ctest --test-dir build -C Release --output-on-failure
+    - name: Package
+      shell: pwsh
+      working-directory: build
+      run: cpack -C Release
