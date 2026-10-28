@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/Garulf/cyber-headtrack/compare/cyber-headtrack-v0.2.0...cyber-headtrack-v0.2.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* build against RED4ext.SDK for patch 2.5 ([ba1e903](https://github.com/Garulf/cyber-headtrack/commit/ba1e9038c8fafed9843897e325297b1b9def47be))
+* support Cyberpunk 2077 patch 2.5 ([0b85850](https://github.com/Garulf/cyber-headtrack/commit/0b8585071d6af5ac18c00fc1bff5f3af1bd29afd))
+
 ## [0.2.0](https://github.com/Garulf/cyber-headtrack/compare/cyber-headtrack-v0.1.0...cyber-headtrack-v0.2.0) (2026-10-05)
 
 
