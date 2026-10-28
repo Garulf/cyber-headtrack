@@ -6,13 +6,14 @@ Tracker 5 and applies it as a first-person camera glance. No eye/gaze tracking i
 
 ## Requirements
 
-- Cyberpunk 2077, with [RED4ext](https://github.com/WopsS/RED4ext) and
-  [redscript](https://github.com/jac3km4/redscript) installed.
-- [Input Loader](https://github.com/jackhumbert/cyberpunk2077-input-loader)
+- Cyberpunk 2077 patch 2.5, with [RED4ext](https://github.com/WopsS/RED4ext) 1.31.0 or
+  later and [redscript](https://github.com/jac3km4/redscript) 0.5.32 or later installed.
+  Older releases of both predate patch 2.5 and fail to load on it.
+- [Input Loader](https://github.com/jackhumbert/cyberpunk2077-input-loader) 0.2.6 or later
   ([Nexus](https://www.nexusmods.com/cyberpunk2077/mods/4575)), which merges this mod's
   key bindings into the game's input configs without overwriting
   `r6/config/inputUserMappings.xml`.
-- Optional: [Cyber Engine Tweaks](https://github.com/maximegmd/CyberEngineTweaks) for the
+- Optional: [Cyber Engine Tweaks](https://github.com/maximegmd/CyberEngineTweaks) 1.38.0 or later for the
   in-game settings window (see Configuration).
 - A Tobii Eye Tracker 5.
 - Tobii's own consumer software (Tobii Game Hub or Tobii Experience) installed, so
@@ -118,7 +119,7 @@ drawn at that point rather than at screen centre. Smart-weapon lock-on, enemy hi
 and projectile weapons such as launchers still follow the view.
 
 The shot correction finds the engine code it patches by byte signature when the game
-starts. It is built for patch 2.31; if a later patch changes that code, the plugin logs
+starts. It is built for patch 2.5; if a later patch changes that code, the plugin logs
 it and shots follow the view again instead of anything breaking.
 
 Tracking applies to the first-person camera on foot and in first-person vehicle views as

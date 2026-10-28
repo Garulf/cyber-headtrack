@@ -2,7 +2,7 @@ include(FetchContent)
 FetchContent_Declare(
     red4ext_sdk
     GIT_REPOSITORY https://github.com/WopsS/RED4ext.SDK.git
-    GIT_TAG ad7277714ad30d6885d7050c5ba24fa0102f6920
+    GIT_TAG 5246e659d783e5834cc08a90e56c8932c9ed3449
 )
 FetchContent_MakeAvailable(red4ext_sdk)
 
