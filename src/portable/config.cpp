@@ -201,6 +201,18 @@ void ReadSettings(const toml::table& table, ProfileConfig& profile) {
     }
 }
 
+void ReadTobiiSettings(const toml::table& table, TrackingConfig& config) {
+    const auto node = table["tobii"]["fallback_url"];
+    if (!node) {
+        return;
+    }
+    const std::optional<std::string> url = node.value<std::string>();
+    if (!url) {
+        throw std::runtime_error("tobii.fallback_url must be a string");
+    }
+    config.tobiiFallbackUrl = *url;
+}
+
 }  // namespace
 
 double AdsEyeOffsetCm(const ProfileConfig& profile) {
@@ -240,6 +252,7 @@ TrackingConfig LoadConfig(const std::filesystem::path& path) {
             ReadSettings(*overrides, profile);
         }
     }
+    ReadTobiiSettings(table, config);
     Validate(config);
     return config;
 }
@@ -263,6 +276,7 @@ void SaveConfig(const std::filesystem::path& path, const TrackingConfig& config)
             out << "\n";
         }
     }
+    out << "\n[tobii]\n" << toml::table{{"fallback_url", config.tobiiFallbackUrl}} << "\n";
 }
 
 void SaveDefaultConfig(const std::filesystem::path& path) {

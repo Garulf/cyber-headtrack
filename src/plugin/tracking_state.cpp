@@ -34,7 +34,7 @@ std::optional<std::string> TrackingState::Initialize(const std::filesystem::path
         configError = error.what();
     }
     RebuildFilters();
-    source_.Start();
+    source_.Start(config_.tobiiFallbackUrl);
     return configError;
 }
 
