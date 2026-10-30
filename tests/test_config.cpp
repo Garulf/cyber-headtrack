@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
 #include "config.h"
@@ -261,4 +262,49 @@ TEST_CASE("ads_ease_seconds defaults to a quarter second and stays within 0 to 2
     SetConfigValue(config, "on_foot.ads_ease_seconds", 0.0);
     REQUIRE(config.onFoot.adsEaseSeconds == Approx(0.0));
     REQUIRE_THROWS_AS(SetConfigValue(config, "on_foot.ads_ease_seconds", 3.0), std::runtime_error);
+}
+
+TEST_CASE("The tracker fallback URL defaults to the tobii-linux PRP pipe", "[config]") {
+    REQUIRE(TrackingConfig{}.tobiiFallbackUrl == "tobii-prp://ET5-LINUX");
+    REQUIRE(LoadConfig("does_not_exist.toml").tobiiFallbackUrl == "tobii-prp://ET5-LINUX");
+}
+
+TEST_CASE("LoadConfig reads the tracker fallback URL from the [tobii] table", "[config]") {
+    const std::string path = "test_config_tobii.toml";
+
+    WriteFile(path, "[tobii]\nfallback_url = \"tobii-prp://OTHER\"\n");
+    REQUIRE(LoadConfig(path).tobiiFallbackUrl == "tobii-prp://OTHER");
+
+    WriteFile(path, "[tobii]\nfallback_url = \"\"\n");
+    REQUIRE(LoadConfig(path).tobiiFallbackUrl.empty());
+
+    WriteFile(path, "[on_foot]\nyaw_scale = 2.0\n");
+    REQUIRE(LoadConfig(path).tobiiFallbackUrl == "tobii-prp://ET5-LINUX");
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("LoadConfig rejects a tracker fallback URL that is not a string", "[config]") {
+    const std::string path = "test_config_tobii_bad.toml";
+    WriteFile(path, "[tobii]\nfallback_url = 5\n");
+
+    REQUIRE_THROWS_WITH(LoadConfig(path), Catch::Matchers::ContainsSubstring("tobii.fallback_url"));
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("SaveConfig keeps the tracker fallback URL", "[config]") {
+    const std::string path = "test_config_tobii_save.toml";
+    TrackingConfig saved;
+    saved.tobiiFallbackUrl = "tobii-prp://\"quoted\"\\path";
+
+    SaveConfig(path, saved);
+
+    REQUIRE(LoadConfig(path).tobiiFallbackUrl == saved.tobiiFallbackUrl);
+
+    saved.tobiiFallbackUrl.clear();
+    SaveConfig(path, saved);
+    REQUIRE(LoadConfig(path).tobiiFallbackUrl.empty());
+
+    std::filesystem::remove(path);
 }

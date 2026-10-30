@@ -2,6 +2,8 @@
 # [on_foot] applies while walking; [vehicle] while seated in any car or bike.
 # lean_* moves the camera with your head position; it starts off in vehicles.
 # ads_eye: -1 left, 0 centre, 1 right.
+# [tobii] fallback_url is opened when Stream Engine finds no tracker (Wine/Proton with
+# tobii-linux serving the PRP pipe); "" turns it off.
 
 [on_foot]
 smoothing_min_cutoff_hz = 1
@@ -56,3 +58,6 @@ ads_ease_seconds = 0.25
 ads_eye = 1
 ads_eye_offset_cm = 3.2
 invert_lean_forward = false
+
+[tobii]
+fallback_url = "tobii-prp://ET5-LINUX"

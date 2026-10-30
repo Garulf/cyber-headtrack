@@ -26,9 +26,10 @@ public:
     TobiiSource& operator=(const TobiiSource&) = delete;
 
     // Starts the worker thread, which connects to the first available tracker and keeps
-    // retrying on a low-frequency timer until one is found or the connection recovers.
+    // retrying on a low-frequency timer until one is found or the connection recovers. When
+    // Stream Engine enumerates no tracker, fallbackUrl (if not empty) is opened instead.
     // Calling Start() while already running does nothing.
-    void Start();
+    void Start(std::string fallbackUrl);
 
     // Stops the worker thread and releases the Tobii API. Safe to call repeatedly.
     void Stop();
@@ -44,11 +45,13 @@ private:
     bool Connect();
     void Disconnect();
     void Publish(std::optional<HeadPose> pose);
-    void ReportFailure(const char* step, int error);
+    void ReportFailure(const std::string& step, int error);
+    void ReportProblem(const std::string& problem);
 
     std::jthread worker_;
     tobii_api_t* api_ = nullptr;
     tobii_device_t* device_ = nullptr;
+    std::string fallbackUrl_;
     std::string lastFailure_;
     bool poseValid_ = false;
 

@@ -107,6 +107,13 @@ unless a table overrides them:
   sideways toward your aiming eye (`-1` left, `0` centre, `1` right) by this many
   centimeters, about half the distance between your eyes.
 
+A separate `[tobii]` table holds `fallback_url`, the tracker the plugin opens when Stream
+Engine finds none. Under Wine and Proton, Stream Engine can't list the named pipes it
+searches for trackers, but it can open one by name, so the default
+`tobii-prp://ET5-LINUX` reaches a [tobii-linux](https://github.com/Garulf/tobii-linux)
+bridge serving its PRP pipe. Set it to `""` to turn the fallback off. The log says which
+URL the plugin connected through.
+
 `smoothing_min_cutoff_hz` must be greater than 0 and `smoothing_beta` 0 or more. If the
 file fails to parse or holds an out-of-range value, the plugin falls back to the defaults
 and writes the reason to the RED4ext log (`red4ext/logs/`).

@@ -67,10 +67,11 @@ TobiiSource::~TobiiSource() {
     Stop();
 }
 
-void TobiiSource::Start() {
+void TobiiSource::Start(std::string fallbackUrl) {
     if (worker_.joinable()) {
         return;
     }
+    fallbackUrl_ = std::move(fallbackUrl);
     worker_ = std::jthread([this](std::stop_token stop) { Run(stop); });
 }
 
@@ -118,17 +119,20 @@ void TobiiSource::Run(std::stop_token stop) {
     Disconnect();
 }
 
-void TobiiSource::ReportFailure(const char* step, int code) {
+void TobiiSource::ReportFailure(const std::string& step, int code) {
     const auto error = static_cast<tobii_error_t>(code);
     if (error == TOBII_ERROR_NO_ERROR) {
         lastFailure_.clear();
         return;
     }
-    std::string failure = std::string(step) + ": " + tobii_error_message(error);
-    if (failure != lastFailure_) {
-        PluginLog("tobii: %s failed (%s); retrying every %llds", step, tobii_error_message(error),
+    ReportProblem(step + " failed (" + tobii_error_message(error) + ")");
+}
+
+void TobiiSource::ReportProblem(const std::string& problem) {
+    if (problem != lastFailure_) {
+        PluginLog("tobii: %s; retrying every %llds", problem.c_str(),
                   static_cast<long long>(kRetryInterval.count() / 1000));
-        lastFailure_ = std::move(failure);
+        lastFailure_ = problem;
     }
 }
 
@@ -142,21 +146,27 @@ bool TobiiSource::Connect() {
 
     std::string url;
     error = tobii_enumerate_local_device_urls(api_, FirstUrlReceiver, &url);
-    if (error != TOBII_ERROR_NO_ERROR || url.empty()) {
-        if (error == TOBII_ERROR_NO_ERROR && lastFailure_ != "no device") {
-            PluginLog("tobii: no tracker found; retrying every %llds",
-                      static_cast<long long>(kRetryInterval.count() / 1000));
-            lastFailure_ = "no device";
-        }
+    if (error != TOBII_ERROR_NO_ERROR) {
         ReportFailure("enumerate_devices", error);
         Disconnect();
         return false;
     }
 
+    const bool usingFallback = url.empty();
+    if (usingFallback) {
+        if (fallbackUrl_.empty()) {
+            ReportProblem("no tracker found");
+            Disconnect();
+            return false;
+        }
+        url = fallbackUrl_;
+    }
+
     error = tobii_device_create(api_, url.c_str(), &device_);
     if (error != TOBII_ERROR_NO_ERROR) {
         device_ = nullptr;
-        ReportFailure("device_create", error);
+        ReportFailure(usingFallback ? "no tracker found; device_create " + url : "device_create",
+                      error);
         Disconnect();
         return false;
     }
@@ -177,7 +187,8 @@ bool TobiiSource::Connect() {
 
     lastFailure_.clear();
     poseValid_ = false;
-    PluginLog("tobii: connected to %s, subscribed to head pose", url.c_str());
+    PluginLog("tobii: connected to %s%s, subscribed to head pose", url.c_str(),
+              usingFallback ? " (fallback_url, none enumerated)" : "");
     return true;
 }
 

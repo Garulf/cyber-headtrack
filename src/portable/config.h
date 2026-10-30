@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "engine_angles.h"
@@ -51,6 +52,11 @@ struct TrackingConfig {
     ProfileConfig onFoot = DefaultProfile(Profile::OnFoot);
     ProfileConfig vehicle = DefaultProfile(Profile::Vehicle);
 
+    // Tracker URL to open when Stream Engine enumerates none, which happens under Wine and
+    // Proton: they can't list the named-pipe root that Stream Engine scans for PRP trackers,
+    // but can open a pipe by name. Empty disables the fallback.
+    std::string tobiiFallbackUrl = "tobii-prp://ET5-LINUX";
+
     const ProfileConfig& For(Profile profile) const {
         return profile == Profile::Vehicle ? vehicle : onFoot;
     }
@@ -58,12 +64,12 @@ struct TrackingConfig {
 
 // Loads a TrackingConfig from a TOML file at path. Each profile starts from its
 // DefaultProfile; top-level keys then set both profiles, and keys in an [on_foot] or
-// [vehicle] table override that profile. Returns defaults if the file
+// [vehicle] table override that profile; [tobii] holds fallback_url. Returns defaults if the file
 // does not exist. Throws std::runtime_error with a descriptive message if the file exists but
 // fails to parse or holds an out-of-range value.
 TrackingConfig LoadConfig(const std::filesystem::path& path);
 
-// Writes config to path as [on_foot] and [vehicle] tables, replacing the file. Throws
+// Writes config to path as [on_foot], [vehicle] and [tobii] tables, replacing the file. Throws
 // std::runtime_error if the file cannot be opened for writing.
 void SaveConfig(const std::filesystem::path& path, const TrackingConfig& config);
 
