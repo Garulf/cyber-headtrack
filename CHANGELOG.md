@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/Garulf/cyber-headtrack/compare/cyber-headtrack-v0.2.1...cyber-headtrack-v0.3.0) (2026-10-30)
+
+
+### Features
+
+* open a fallback tracker URL when none is enumerated ([#4](https://github.com/Garulf/cyber-headtrack/issues/4)) ([f3ab43b](https://github.com/Garulf/cyber-headtrack/commit/f3ab43b5b57bf9e9db7ae6168d178073aac759a5)), closes [#3](https://github.com/Garulf/cyber-headtrack/issues/3)
+
 ## [0.2.1](https://github.com/Garulf/cyber-headtrack/compare/cyber-headtrack-v0.2.0...cyber-headtrack-v0.2.1) (2026-10-28)
 
 
