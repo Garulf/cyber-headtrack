@@ -1,5 +1,6 @@
 #include "tracking_state.h"
 
+#include <chrono>
 #include <exception>
 
 #include "plugin_log.h"
@@ -10,6 +11,10 @@ constexpr double kPoseLossGraceSeconds = 0.5;
 constexpr double kStatusLogIntervalSeconds = 2.0;
 constexpr size_t kMaxScanCandidates = 64;
 constexpr double kDefaultAspect = 16.0 / 9.0;
+
+double SteadySeconds() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 }  // namespace
 
@@ -82,7 +87,8 @@ void TrackingState::SetEnabled(bool enabled) {
 
 void TrackingState::Update(double dtSeconds) {
     std::lock_guard lock(mutex_);
-    const bool gazeActive = enabled_ && scanActive_ && config_.gaze.scanEnabled;
+    ExpireStaleScanFrame();
+    const bool gazeActive = enabled_ && scanActive_ && scanRedirectLive_ && config_.gaze.scanEnabled;
     gaze_.Update(enabled_ ? source_.LatestGaze() : std::nullopt, gazeActive, dtSeconds);
     if (!enabled_) {
         return;
@@ -121,12 +127,14 @@ void TrackingState::LogStatusPeriodically(double dtSeconds) {
     const ScanPoint scan = ScanPointLocked();
     const std::string lockedId = scan.lockedId ? std::to_string(*scan.lockedId) : "none";
     PluginLog("status: profile=%s pose=%s yaw=%.1f pitch=%.1f roll=%.1f lean side=%.1f up=%.1f "
-              "forward=%.1f cm gaze=%.3f,%.3f w=%.2f scan=%s lock=%s candidates=%zu",
+              "forward=%.1f cm gaze=%.3f,%.3f w=%.2f scan=%s redirect=%s lock=%s candidates=%zu "
+              "ndc_per_tan=%.3f,%.3f",
               profile_ == Profile::Vehicle ? "vehicle" : "on_foot",
               source_.Latest() ? "yes" : "no", angles.yaw, angles.pitch, angles.roll,
               currentLean_.sideCm, currentLean_.upCm, currentLean_.forwardCm, scan.point.x,
-              scan.point.y, scan.weight, scanActive_ ? "on" : "off", lockedId.c_str(),
-              scanCandidates_.size());
+              scan.point.y, scan.weight, scanActive_ ? "on" : "off",
+              scanRedirectLive_ ? "live" : "none", lockedId.c_str(), scanCandidates_.size(),
+              ndcPerTanX_, ndcPerTanY_);
 }
 
 void TrackingState::Recenter() {
@@ -217,6 +225,7 @@ void TrackingState::ConfigureGaze() {
 
 void TrackingState::SetScanFrame(bool active, double ndcPerTanX, double ndcPerTanY) {
     std::lock_guard lock(mutex_);
+    scanFrames_.Beat(SteadySeconds());
     if (active != scanActive_) {
         PluginLog("scan gaze: scan mode %s", active ? "entered" : "left");
         scanLock_.Reset();
@@ -239,12 +248,30 @@ void TrackingState::AddScanCandidate(ScanCandidate candidate) {
     }
 }
 
+void TrackingState::SetScanRedirectLive(bool live) {
+    std::lock_guard lock(mutex_);
+    if (live != scanRedirectLive_) {
+        PluginLog("scan gaze: targeting redirect %s", live ? "sees the player's rays" : "idle");
+    }
+    scanRedirectLive_ = live;
+}
+
+void TrackingState::ExpireStaleScanFrame() {
+    if (scanActive_ && !scanFrames_.Alive(SteadySeconds())) {
+        PluginLog("scan gaze: scan mode left (scan frames stopped)");
+        scanActive_ = false;
+        scanLock_.Reset();
+        scanLockResult_ = {};
+    }
+}
+
 LockResult TrackingState::UpdateScanLock(double dtSeconds) {
     std::lock_guard lock(mutex_);
     const bool projectionKnown = ndcPerTanX_ > 0.0 && ndcPerTanY_ > 0.0;
     const double aspect = projectionKnown ? ndcPerTanY_ / ndcPerTanX_ : kDefaultAspect;
     const GazeOutput gaze = gaze_.Current();
-    scanLockResult_ = scanLock_.Update(gaze.point, gaze.weight, scanCandidates_, aspect, dtSeconds);
+    scanLockResult_ = scanLock_.Update(gaze.point, gaze.weight, gaze.onScreen, scanCandidates_, aspect,
+                                       dtSeconds);
     return scanLockResult_;
 }
 
@@ -264,7 +291,8 @@ TrackingState::ScanPoint TrackingState::ScanPointLocked() const {
 std::optional<Vec3> TrackingState::ScanCameraDirection() const {
     std::lock_guard lock(mutex_);
     const ScanPoint scan = ScanPointLocked();
-    if (!scanActive_ || scan.weight <= 0.0 || ndcPerTanX_ <= 0.0 || ndcPerTanY_ <= 0.0) {
+    const bool scanFresh = scanActive_ && scanFrames_.Alive(SteadySeconds());
+    if (!scanFresh || scan.weight <= 0.0 || ndcPerTanX_ <= 0.0 || ndcPerTanY_ <= 0.0) {
         return std::nullopt;
     }
     return ScreenToCameraDirection(scan.point, ndcPerTanX_, ndcPerTanY_);

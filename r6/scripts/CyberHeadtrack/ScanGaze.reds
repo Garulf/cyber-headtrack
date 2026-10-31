@@ -57,9 +57,10 @@ public class HeadtrackScanGaze {
     cameraSystem.GetActiveCameraWorldTransform(transform);
     let forward: Vector4 = cameraSystem.GetActiveCameraForward();
     let tangent: Float = 1.0 / HeadtrackProjectionProbeDistance();
+    let centreProbe: Vector4 = this.ProjectProbe(cameraSystem, transform.position, forward, new Vector4(0.0, 0.0, 0.0, 0.0));
     let rightProbe: Vector4 = this.ProjectProbe(cameraSystem, transform.position, forward, cameraSystem.GetActiveCameraRight());
     let upProbe: Vector4 = this.ProjectProbe(cameraSystem, transform.position, forward, cameraSystem.GetActiveCameraUp());
-    SetHeadtrackScanFrame(scanning, rightProbe.X / tangent, upProbe.Y / tangent);
+    SetHeadtrackScanFrame(scanning, (rightProbe.X - centreProbe.X) / tangent, (upProbe.Y - centreProbe.Y) / tangent);
 
     if scanning {
       this.LogWindowModeOnce(player);

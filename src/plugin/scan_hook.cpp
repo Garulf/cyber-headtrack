@@ -3,6 +3,7 @@
 #include <Windows.h>
 
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +13,7 @@
 #include "aim_hook.h"
 #include "aim_math.h"
 #include "code_patch.h"
+#include "heartbeat.h"
 #include "pattern_scan.h"
 #include "plugin_log.h"
 #include "tracking_state.h"
@@ -71,6 +73,11 @@ ScanSite gSites[] = {
 };
 
 SiteStats gStats[std::size(gSites)];
+Heartbeat gPlayerRays{0.25};
+
+double SteadySeconds() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 Vec3 ToVec3(const float* v) {
     return {v[0], v[1], v[2]};
@@ -92,6 +99,7 @@ bool NearCamera(const float* point, const Vec3& camera) {
 // Replaces the player's ray direction (xyz only) with the scan point seen from camera.
 void Redirect(SiteStats& stats, float* direction, const Quat& camera, const Vec3& cameraForward) {
     stats.player.fetch_add(1, std::memory_order_relaxed);
+    gPlayerRays.Beat(SteadySeconds());
     stats.angleDegrees.store(static_cast<float>(AngleDegrees(ToVec3(direction), cameraForward)),
                              std::memory_order_relaxed);
     const auto scan = TrackingState::Instance().ScanCameraDirection();
@@ -181,6 +189,10 @@ void RemoveScanHooks() {
         RestoreCall(site.call, site.originalDisplacement);
         site.call = nullptr;
     }
+}
+
+bool ScanRedirectLive() {
+    return gPlayerRays.Alive(SteadySeconds());
 }
 
 void ReportScanStats() {

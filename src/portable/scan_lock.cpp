@@ -27,11 +27,12 @@ void ScanLock::Configure(const GazeConfig& config) {
 
 void ScanLock::Reset() {
     lockedId_.reset();
+    lockedMissingSeconds_ = 0.0;
     dwellId_.reset();
     dwellSeconds_ = 0.0;
 }
 
-LockResult ScanLock::Update(ScreenPoint gaze, double gazeWeight,
+LockResult ScanLock::Update(ScreenPoint gaze, double gazeWeight, bool gazeOnScreen,
                             std::span<const ScanCandidate> candidates, double aspect,
                             double dtSeconds) {
     if (gazeWeight < 1.0) {
@@ -40,15 +41,27 @@ LockResult ScanLock::Update(ScreenPoint gaze, double gazeWeight,
     }
 
     const ScanCandidate* locked = lockedId_ ? FindCandidate(candidates, *lockedId_) : nullptr;
-    if (locked == nullptr) {
-        lockedId_.reset();
+    ScanCandidate missingLocked;
+    if (locked != nullptr) {
+        lockedMissingSeconds_ = 0.0;
+    } else if (lockedId_) {
+        lockedMissingSeconds_ += dtSeconds;
+        if (lockedMissingSeconds_ <= kLockLossGraceSeconds) {
+            missingLocked = {*lockedId_, lockedPoint_};
+            locked = &missingLocked;
+        } else {
+            lockedId_.reset();
+            lockedMissingSeconds_ = 0.0;
+        }
     }
 
     const auto withinRadius = [&](const ScanCandidate& candidate) {
         return ScreenDistance(gaze, candidate.point, aspect) <= config_.lockRadius;
     };
     const ScanCandidate* gazed = nullptr;
-    if (locked != nullptr && withinRadius(*locked)) {
+    if (!gazeOnScreen) {
+        gazed = nullptr;
+    } else if (locked != nullptr && withinRadius(*locked)) {
         gazed = locked;
     } else {
         double nearest = config_.lockRadius;
@@ -89,5 +102,6 @@ LockResult ScanLock::Update(ScreenPoint gaze, double gazeWeight,
         return {gaze, std::nullopt};
     }
     lockedId_ = locked->id;
+    lockedPoint_ = locked->point;
     return {locked->point, lockedId_};
 }

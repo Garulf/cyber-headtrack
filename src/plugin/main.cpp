@@ -230,6 +230,7 @@ bool OnRunningUpdate(RED4ext::CGameApplication*) {
         firstUpdate = false;
         PluginLog("running-state update hook is ticking");
     }
+    TrackingState::Instance().SetScanRedirectLive(ScanRedirectLive());
     TrackingState::Instance().Update(std::min(dtSeconds, 0.25));
     static double secondsSinceAimReport = 0.0;
     secondsSinceAimReport += dtSeconds;

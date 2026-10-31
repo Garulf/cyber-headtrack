@@ -18,6 +18,10 @@
 void InstallScanHooks();
 void RemoveScanHooks();
 
+// True while a hooked site has seen one of the player's rays in the last quarter second, i.e.
+// a redirect would actually reach the engine's targeting.
+bool ScanRedirectLive();
+
 // Logs per-site call counts and the last angle between the engine's own ray and the camera
 // forward (about 0 when the site really is the centre ray), if they changed since last call.
 void ReportScanStats();

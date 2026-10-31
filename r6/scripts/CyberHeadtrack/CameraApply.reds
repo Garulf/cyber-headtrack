@@ -127,6 +127,7 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
 
   private final func OnPlayerDetach(request: ref<PlayerDetachRequest>) -> Void {
     this.UnregisterInput();
+    SetHeadtrackScanFrame(false, 0.0, 0.0);
     this.applied = false;
     this.player = null;
   }

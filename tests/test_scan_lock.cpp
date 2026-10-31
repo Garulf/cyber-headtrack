@@ -10,18 +10,22 @@ namespace {
 constexpr double kFrame = 1.0 / 60.0;
 constexpr double kAspect = 16.0 / 9.0;
 
+bool OnScreen(ScreenPoint gaze) {
+    return gaze.x >= 0.0 && gaze.x <= 1.0 && gaze.y >= 0.0 && gaze.y <= 1.0;
+}
+
 LockResult Run(ScanLock& lock, ScreenPoint gaze, const std::vector<ScanCandidate>& candidates,
                double seconds, double weight = 1.0) {
     LockResult result;
     for (double t = 0.0; t < seconds - 1e-9; t += kFrame) {
-        result = lock.Update(gaze, weight, candidates, kAspect, kFrame);
+        result = lock.Update(gaze, weight, OnScreen(gaze), candidates, kAspect, kFrame);
     }
     return result;
 }
 
 LockResult Step(ScanLock& lock, ScreenPoint gaze, const std::vector<ScanCandidate>& candidates,
                 double weight = 1.0) {
-    return lock.Update(gaze, weight, candidates, kAspect, kFrame);
+    return lock.Update(gaze, weight, OnScreen(gaze), candidates, kAspect, kFrame);
 }
 
 void RequirePoint(ScreenPoint actual, ScreenPoint expected) {
@@ -110,10 +114,37 @@ TEST_CASE("ScanLock releases a target that is no longer a candidate", "[scan_loc
     ScanLock lock{GazeConfig{}};
     Step(lock, {0.6, 0.5}, {{7, {0.6, 0.5}}});
 
-    const LockResult result = Step(lock, {0.1, 0.9}, {});
+    const LockResult held = Step(lock, {0.1, 0.9}, {});
+    REQUIRE(held.lockedId == 7u);
+    RequirePoint(held.point, {0.6, 0.5});
 
+    const LockResult result = Run(lock, {0.1, 0.9}, {}, kLockLossGraceSeconds + 0.05);
     REQUIRE_FALSE(result.lockedId);
     RequirePoint(result.point, {0.1, 0.9});
+}
+
+TEST_CASE("ScanLock keeps the lock through a one-frame dropout next to a neighbour", "[scan_lock]") {
+    ScanLock lock{GazeConfig{}};
+    const ScanCandidate first{1, {0.50, 0.5}};
+    const ScanCandidate neighbour{2, {0.53, 0.5}};
+    REQUIRE(Step(lock, {0.50, 0.5}, {first, neighbour}).lockedId == 1u);
+
+    REQUIRE(Step(lock, {0.52, 0.5}, {neighbour}).lockedId == 1u);
+
+    REQUIRE(Run(lock, {0.52, 0.5}, {first, neighbour}, 1.0).lockedId == 1u);
+}
+
+TEST_CASE("ScanLock treats off-screen gaze as empty space", "[scan_lock]") {
+    ScanLock lock{GazeConfig{}};
+    const std::vector<ScanCandidate> candidates{{7, {0.3, 0.5}}, {8, {1.0, 0.5}}};
+    Step(lock, {0.3, 0.5}, candidates);
+
+    LockResult result;
+    for (double t = 0.0; t < 2.0; t += kFrame) {
+        result = lock.Update({1.0, 0.5}, 1.0, false, candidates, kAspect, kFrame);
+    }
+
+    REQUIRE(result.lockedId == 7u);
 }
 
 TEST_CASE("ScanLock does not lock while gaze is easing", "[scan_lock]") {

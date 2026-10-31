@@ -13,6 +13,7 @@
 #include "config.h"
 #include "engine_angles.h"
 #include "gaze.h"
+#include "heartbeat.h"
 #include "head_pose.h"
 #include "one_euro_filter.h"
 #include "rotation.h"
@@ -74,8 +75,13 @@ public:
     void SetActiveProfile(Profile profile);
 
     // Scan mode: published by the scan script every frame. ndcPerTanX/Y are the camera
-    // projection's scales (see ScreenToCameraDirection). Gaze is used only while active.
+    // projection's scales (see ScreenToCameraDirection). Gaze is used only while active, and
+    // scan mode counts as left when the script stops publishing (scenes, workspots, death).
     void SetScanFrame(bool active, double ndcPerTanX, double ndcPerTanY);
+
+    // Whether the targeting hooks are seeing the player's rays (scan_hook.h). Without that the
+    // reticle would show a target the engine isn't using, so gaze stays off.
+    void SetScanRedirectLive(bool live);
     void ClearScanCandidates();
     void AddScanCandidate(ScanCandidate candidate);
     LockResult UpdateScanLock(double dtSeconds);
@@ -95,6 +101,7 @@ public:
 private:
     ScanPoint ScanPointLocked() const;
     void ConfigureGaze();
+    void ExpireStaleScanFrame();
 
     void LogStatusPeriodically(double dtSeconds);
     void ResetFilters();
@@ -129,6 +136,8 @@ private:
     std::vector<ScanCandidate> scanCandidates_;
     LockResult scanLockResult_;
     bool scanActive_ = false;
+    bool scanRedirectLive_ = false;
+    Heartbeat scanFrames_{0.2};
     double ndcPerTanX_ = 0.0;
     double ndcPerTanY_ = 0.0;
 };

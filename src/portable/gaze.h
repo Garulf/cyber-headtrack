@@ -24,6 +24,8 @@ struct GazeOutput {
     ScreenPoint point;
     // 0 = vanilla (centre, no redirect), 1 = full gaze.
     double weight = 0.0;
+    // False while the latest sample lies outside the screen (before clamping) or is missing.
+    bool onScreen = false;
 };
 
 // Smooths the gaze point for the scanner reticle and eases between it and screen centre when
@@ -46,4 +48,5 @@ private:
     ScreenPoint filtered_;
     double weight_ = 0.0;
     double secondsWithoutSample_ = 0.0;
+    bool onScreen_ = false;
 };

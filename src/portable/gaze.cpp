@@ -4,6 +4,10 @@
 
 namespace {
 
+bool IsOnScreen(ScreenPoint point) {
+    return point.x >= 0.0 && point.x <= 1.0 && point.y >= 0.0 && point.y <= 1.0;
+}
+
 ScreenPoint ClampToScreen(ScreenPoint point) {
     return {std::clamp(point.x, 0.0, 1.0), std::clamp(point.y, 0.0, 1.0)};
 }
@@ -31,6 +35,7 @@ GazeOutput GazeTracker::Update(std::optional<ScreenPoint> sample, bool active, d
     }
 
     const double easeStep = dtSeconds / kGazeEaseSeconds;
+    onScreen_ = sample && IsOnScreen(*sample);
     if (sample) {
         const ScreenPoint point = ClampToScreen(*sample);
         if (weight_ == 0.0) {
@@ -54,5 +59,5 @@ GazeOutput GazeTracker::Update(std::optional<ScreenPoint> sample, bool active, d
 GazeOutput GazeTracker::Current() const {
     return {{kScreenCentre.x + weight_ * (filtered_.x - kScreenCentre.x),
              kScreenCentre.y + weight_ * (filtered_.y - kScreenCentre.y)},
-            weight_};
+            weight_, onScreen_};
 }

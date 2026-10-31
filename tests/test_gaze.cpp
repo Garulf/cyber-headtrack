@@ -94,3 +94,12 @@ TEST_CASE("GazeTracker ignores non-positive dt", "[gaze]") {
     REQUIRE(after.point.x == before.point.x);
     REQUIRE(after.point.y == before.point.y);
 }
+
+TEST_CASE("GazeTracker flags samples outside the screen", "[gaze]") {
+    GazeTracker tracker{GazeConfig{}};
+
+    REQUIRE(tracker.Update(ScreenPoint{0.5, 0.5}, true, kFrame).onScreen);
+    REQUIRE_FALSE(tracker.Update(ScreenPoint{1.4, 0.5}, true, kFrame).onScreen);
+    REQUIRE_FALSE(tracker.Update(std::nullopt, true, kFrame).onScreen);
+    REQUIRE(tracker.Update(ScreenPoint{0.2, 0.9}, true, kFrame).onScreen);
+}
