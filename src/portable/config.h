@@ -48,9 +48,24 @@ enum class Profile { OnFoot, Vehicle };
 // moving the camera easily pushes it through the roof or windshield.
 ProfileConfig DefaultProfile(Profile profile);
 
+// Eye tracking in scan mode: the scanner reticle follows the gaze point and locks onto the
+// target under it. Shared by both profiles.
+struct GazeConfig {
+    bool scanEnabled = true;
+    double smoothingMinCutoffHz = 0.5;
+    double smoothingBeta = 1.0;
+    // Keep the locked target while the gaze rests on empty space or the HUD.
+    bool stickyLock = true;
+    // How close the gaze must come to a target to lock it, in screen heights.
+    double lockRadius = 0.06;
+    // How long the gaze must rest on another target before the lock moves to it.
+    double switchDwellSeconds = 0.2;
+};
+
 struct TrackingConfig {
     ProfileConfig onFoot = DefaultProfile(Profile::OnFoot);
     ProfileConfig vehicle = DefaultProfile(Profile::Vehicle);
+    GazeConfig gaze;
 
     // Tracker URL to open when Stream Engine enumerates none, which happens under Wine and
     // Proton: they can't list the named-pipe root that Stream Engine scans for PRP trackers,
@@ -64,20 +79,21 @@ struct TrackingConfig {
 
 // Loads a TrackingConfig from a TOML file at path. Each profile starts from its
 // DefaultProfile; top-level keys then set both profiles, and keys in an [on_foot] or
-// [vehicle] table override that profile; [tobii] holds fallback_url. Returns defaults if the file
+// [vehicle] table override that profile; [gaze] holds the scan-mode eye tracking settings and
+// [tobii] holds fallback_url. Returns defaults if the file
 // does not exist. Throws std::runtime_error with a descriptive message if the file exists but
 // fails to parse or holds an out-of-range value.
 TrackingConfig LoadConfig(const std::filesystem::path& path);
 
-// Writes config to path as [on_foot], [vehicle] and [tobii] tables, replacing the file. Throws
+// Writes config to path as [on_foot], [vehicle], [gaze] and [tobii] tables, replacing the file. Throws
 // std::runtime_error if the file cannot be opened for writing.
 void SaveConfig(const std::filesystem::path& path, const TrackingConfig& config);
 
 // Writes a default config file at path, for first-run bootstrapping.
 void SaveDefaultConfig(const std::filesystem::path& path);
 
-// Reads or writes one setting by "<profile>.<key>", e.g. "vehicle.yaw_scale", where profile
-// is on_foot or vehicle and key is the TOML name. Flags such as "invert_roll" read as
+// Reads or writes one setting by "<section>.<key>", e.g. "vehicle.yaw_scale", where section
+// is on_foot, vehicle or gaze and key is the TOML name. Flags such as "invert_roll" read as
 // 1.0 / 0.0 and treat any non-zero value as true. GetConfigValue returns std::nullopt for an
 // unknown name; SetConfigValue throws std::runtime_error for an unknown name or an
 // out-of-range value and leaves config unchanged in that case.

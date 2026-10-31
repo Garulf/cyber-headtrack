@@ -308,3 +308,81 @@ TEST_CASE("SaveConfig keeps the tracker fallback URL", "[config]") {
 
     std::filesystem::remove(path);
 }
+
+TEST_CASE("Gaze settings default to scan on, sticky lock, 0.06 radius", "[config]") {
+    const GazeConfig gaze = LoadConfig("does_not_exist.toml").gaze;
+
+    REQUIRE(gaze.scanEnabled);
+    REQUIRE(gaze.stickyLock);
+    REQUIRE(gaze.lockRadius == Approx(0.06));
+    REQUIRE(gaze.switchDwellSeconds == Approx(0.2));
+    REQUIRE(gaze.smoothingMinCutoffHz == Approx(0.5));
+    REQUIRE(gaze.smoothingBeta == Approx(1.0));
+}
+
+TEST_CASE("LoadConfig reads the [gaze] table and ignores top-level keys for it", "[config]") {
+    const std::string path = "test_config_gaze.toml";
+    WriteFile(path, "smoothing_beta = 0.3\n[gaze]\nsticky_lock = false\nlock_radius = 0.1\n");
+
+    const TrackingConfig config = LoadConfig(path);
+
+    REQUIRE(config.onFoot.smoothingBeta == Approx(0.3));
+    REQUIRE(config.gaze.smoothingBeta == Approx(1.0));
+    REQUIRE_FALSE(config.gaze.stickyLock);
+    REQUIRE(config.gaze.lockRadius == Approx(0.1));
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("LoadConfig rejects out-of-range gaze values", "[config]") {
+    const std::string path = "test_config_gaze_bad.toml";
+    const std::pair<const char*, const char*> cases[] = {
+        {"lock_radius", "0.0"},
+        {"lock_radius", "0.5"},
+        {"switch_dwell_seconds", "-1"},
+        {"switch_dwell_seconds", "3"},
+        {"smoothing_min_cutoff_hz", "0"},
+        {"smoothing_beta", "-0.1"},
+    };
+
+    for (const auto& [key, value] : cases) {
+        WriteFile(path, ("[gaze]\n" + std::string(key) + " = " + value + "\n").c_str());
+        REQUIRE_THROWS_WITH(LoadConfig(path),
+                            Catch::Matchers::StartsWith("gaze." + std::string(key)));
+    }
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("Gaze settings are reachable by gaze.<key>", "[config]") {
+    TrackingConfig config;
+
+    REQUIRE(GetConfigValue(config, "gaze.sticky_lock") == 1.0);
+    SetConfigValue(config, "gaze.sticky_lock", 0.0);
+    REQUIRE_FALSE(config.gaze.stickyLock);
+    SetConfigValue(config, "gaze.lock_radius", 0.08);
+    REQUIRE(config.gaze.lockRadius == Approx(0.08));
+    REQUIRE_THROWS(SetConfigValue(config, "gaze.lock_radius", 0.9));
+    REQUIRE(config.gaze.lockRadius == Approx(0.08));
+    REQUIRE_FALSE(GetConfigValue(config, "gaze.nope"));
+}
+
+TEST_CASE("SaveConfig keeps the gaze settings", "[config]") {
+    const std::string path = "test_config_gaze_save.toml";
+    TrackingConfig saved;
+    saved.gaze.scanEnabled = false;
+    saved.gaze.lockRadius = 0.12;
+    saved.gaze.switchDwellSeconds = 0.5;
+    saved.tobiiFallbackUrl = "tobii-prp://OTHER";
+
+    SaveConfig(path, saved);
+    const TrackingConfig loaded = LoadConfig(path);
+
+    REQUIRE_FALSE(loaded.gaze.scanEnabled);
+    REQUIRE(loaded.gaze.lockRadius == Approx(0.12));
+    REQUIRE(loaded.gaze.switchDwellSeconds == Approx(0.5));
+    REQUIRE(loaded.gaze.stickyLock);
+    REQUIRE(loaded.tobiiFallbackUrl == "tobii-prp://OTHER");
+
+    std::filesystem::remove(path);
+}
