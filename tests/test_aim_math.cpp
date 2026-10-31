@@ -110,3 +110,10 @@ TEST_CASE("ScreenToCameraDirection points left and down for the lower left", "[a
     REQUIRE(direction.z < 0.0);
     REQUIRE(std::hypot(direction.x, direction.y, direction.z) == Approx(1.0));
 }
+
+TEST_CASE("AngleDegrees measures the angle between two directions", "[aim_math]") {
+    REQUIRE(AngleDegrees(kForward, kForward) == Approx(0.0).margin(1e-6));
+    REQUIRE(AngleDegrees(kForward, Vec3{1.0, 0.0, 0.0}) == Approx(90.0));
+    REQUIRE(AngleDegrees(kForward, Vec3{0.0, -2.0, 0.0}) == Approx(180.0));
+    REQUIRE(AngleDegrees(kForward, Rotate(AboutZ(30.0), Vec3{0.0, 3.0, 0.0})) == Approx(30.0));
+}

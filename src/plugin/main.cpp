@@ -12,6 +12,7 @@
 
 #include "aim_hook.h"
 #include "plugin_log.h"
+#include "scan_hook.h"
 #include "tracking_state.h"
 
 namespace {
@@ -235,6 +236,7 @@ bool OnRunningUpdate(RED4ext::CGameApplication*) {
     if (secondsSinceAimReport >= 2.0) {
         secondsSinceAimReport = 0.0;
         ReportAimStats();
+        ReportScanStats();
     }
     return false;
 }
@@ -412,9 +414,11 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
         };
         aSdk->gameStates->Add(aHandle, RED4ext::EGameStateType::Running, &runningState);
         InstallAimHooks();
+        InstallScanHooks();
         break;
     }
     case RED4ext::v1::EMainReason::Unload: {
+        RemoveScanHooks();
         RemoveAimHooks();
         TrackingState::Instance().Shutdown();
         gSdk = nullptr;

@@ -36,6 +36,9 @@ Vec3 CleanAimDirection(const Quat& cameraWorld, const Quat& headLocal, const Vec
 // directions that clearly aren't aimed from the camera.
 bool IsNearForward(const Quat& cameraWorld, const Vec3& direction, double maxDegrees);
 
+// The angle between two non-zero directions, in degrees.
+double AngleDegrees(const Vec3& a, const Vec3& b);
+
 // The camera-space direction (X right, Y forward, Z up) through a point on the screen.
 // ndcPerTanX and ndcPerTanY are the projection's scales: how far a direction moves in
 // normalized device coordinates per unit of tangent of its angle from forward.
