@@ -5,7 +5,9 @@
    remove the raw tags to start using helpers like screenshot() and badge(). #}
 {% block usage %}
 A RED4ext + redscript mod for Cyberpunk 2077 that reads head-pose data from a Tobii Eye
-Tracker 5 and applies it as a first-person camera glance. No eye/gaze tracking is used.
+Tracker 5 and applies it as a first-person camera glance. In scan mode (Tab), the scanner
+reticle also follows your eyes, and whoever you look at becomes the scan and quickhack
+target. Gaze never moves the camera.
 
 ## Requirements
 
@@ -117,6 +119,20 @@ searches for trackers, but it can open one by name, so the default
 bridge serving its PRP pipe. Set it to `""` to turn the fallback off. The log says which
 URL the plugin connected through.
 
+A `[gaze]` table holds the scan-mode eye tracking settings, shared by both profiles:
+
+- `scan_enabled`: let your eyes drive the scanner reticle in scan mode. Turning tracking
+  off with F10 turns this off too.
+- `smoothing_min_cutoff_hz` / `smoothing_beta`: smoothing for the reticle, working like
+  the head rotation pair above.
+- `sticky_lock`: once the reticle locks onto someone, keep them targeted while you look
+  at empty space or the HUD (reading the quickhack list, for example). With `false`, the
+  target drops as soon as you look away, like the vanilla reticle on empty space.
+- `lock_radius`: how close your gaze must come to a target to lock it, as a fraction of
+  the screen height (0.01 to 0.3).
+- `switch_dwell_seconds`: how long you must look at another target before the lock moves
+  to it (0 to 2), so it doesn't flick between two people standing close together.
+
 `smoothing_min_cutoff_hz` must be greater than 0 and `smoothing_beta` 0 or more. If the
 file fails to parse or holds an out-of-range value, the plugin falls back to the defaults
 and writes the reason to the RED4ext log (`red4ext/logs/`).
@@ -140,6 +156,19 @@ picks up again when you switch back to first person.
 
 If the tracker loses your head for more than half a second, the view eases back to center
 until tracking resumes.
+
+In scan mode the reticle eases from the screen centre to your gaze point and back again
+when you close the scanner. If the tracker loses your eyes for more than a moment, it
+eases back to the centre and targeting works like vanilla until your eyes are found
+again. Gaze needs the tracker's display setup to match the monitor the game runs on, with
+the game fullscreen or borderless; in a window the reticle is mapped to the whole
+display. Under Linux, the [tobii-linux](https://github.com/Garulf/tobii-linux) bridge must
+serve the gaze point as well as head pose. The log says when the tracker sends no gaze
+samples.
+
+Like the shot correction, gaze targeting finds the engine code it patches by byte
+signature; if a patch changes that code, it is logged and the scanner targets the screen
+centre as usual.
 
 On foot, a pitch-gated body-visibility offset (raising and pulling back the camera as you
 tilt your head down) is applied on top of the rotation so V's body and clothes stay in

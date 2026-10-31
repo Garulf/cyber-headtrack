@@ -3,6 +3,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
+#include <toml++/toml.hpp>
 #include "config.h"
 
 using Catch::Approx;
@@ -385,4 +386,31 @@ TEST_CASE("SaveConfig keeps the gaze settings", "[config]") {
     REQUIRE(loaded.tobiiFallbackUrl == "tobii-prp://OTHER");
 
     std::filesystem::remove(path);
+}
+
+TEST_CASE("The shipped config.toml lists every gaze setting at its default", "[config]") {
+    const std::filesystem::path shipped =
+        std::filesystem::path(CHT_SOURCE_DIR) / "red4ext/plugins/CyberHeadtrack/config.toml";
+    const std::string defaultsPath = "test_config_gaze_defaults.toml";
+    SaveDefaultConfig(defaultsPath);
+
+    const toml::table shippedTable = toml::parse_file(shipped.string());
+    const toml::table defaultsTable = toml::parse_file(defaultsPath);
+    const toml::table* shippedGaze = shippedTable["gaze"].as_table();
+    REQUIRE(shippedGaze != nullptr);
+    for (const auto& [key, value] : *defaultsTable["gaze"].as_table()) {
+        INFO("gaze." << key.str());
+        REQUIRE(shippedGaze->contains(key.str()));
+    }
+
+    const GazeConfig gaze = LoadConfig(shipped).gaze;
+    const GazeConfig defaults;
+    REQUIRE(gaze.scanEnabled == defaults.scanEnabled);
+    REQUIRE(gaze.smoothingMinCutoffHz == Approx(defaults.smoothingMinCutoffHz));
+    REQUIRE(gaze.smoothingBeta == Approx(defaults.smoothingBeta));
+    REQUIRE(gaze.stickyLock == defaults.stickyLock);
+    REQUIRE(gaze.lockRadius == Approx(defaults.lockRadius));
+    REQUIRE(gaze.switchDwellSeconds == Approx(defaults.switchDwellSeconds));
+
+    std::filesystem::remove(defaultsPath);
 }

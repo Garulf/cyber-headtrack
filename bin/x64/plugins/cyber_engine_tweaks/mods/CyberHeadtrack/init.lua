@@ -1,8 +1,8 @@
 -- CyberHeadtrack settings window, shown while the Cyber Engine Tweaks overlay is open.
 -- Each profile (on foot, vehicle) has its own settings; the one in use switches
 -- automatically when V gets in or out of a vehicle. Lean (moving the camera with your head
--- position) starts off for vehicles. Changes apply immediately and are
--- written to config.toml when the overlay closes.
+-- position) starts off for vehicles. Eye tracking in scan mode is shared by both profiles.
+-- Changes apply immediately and are written to config.toml when the overlay closes.
 
 local PROFILES = {
     { id = "on_foot", label = "On foot" },
@@ -64,6 +64,23 @@ local SECTIONS = {
     },
 }
 
+-- Not a profile: its settings are "gaze.<key>" and apply on foot and in vehicles alike.
+local GAZE = { id = "gaze" }
+
+local GAZE_SECTION = {
+    title = "Eye tracking (scan mode)",
+    flags = {
+        { key = "scan_enabled", label = "Scanner reticle follows your eyes" },
+        { key = "sticky_lock", label = "Keep the target while looking away" },
+    },
+    sliders = {
+        { key = "lock_radius", label = "Lock radius (screen heights)", min = 0.01, max = 0.3, format = "%.3f" },
+        { key = "switch_dwell_seconds", label = "Switch delay (s)", min = 0.0, max = 2.0, format = "%.2f" },
+        { key = "smoothing_min_cutoff_hz", label = "Smoothing at rest (Hz)", min = 0.05, max = 5.0, format = "%.2f" },
+        { key = "smoothing_beta", label = "Speed response (beta)", min = 0.0, max = 5.0, format = "%.3f" },
+    },
+}
+
 local overlayOpen = false
 local unsaved = false
 local message = ""
@@ -79,16 +96,21 @@ local function settingLists(section)
              section.trailingSliders or {}, section.trailingFlags or {} }
 end
 
+local function loadSection(profile, section)
+    for _, list in ipairs(settingLists(section)) do
+        for _, setting in ipairs(list) do
+            values[name(profile, setting.key)] = HeadtrackSettings.Get(name(profile, setting.key))
+        end
+    end
+end
+
 local function loadValues()
     for _, profile in ipairs(PROFILES) do
         for _, section in ipairs(SECTIONS) do
-            for _, list in ipairs(settingLists(section)) do
-                for _, setting in ipairs(list) do
-                    values[name(profile, setting.key)] = HeadtrackSettings.Get(name(profile, setting.key))
-                end
-            end
+            loadSection(profile, section)
         end
     end
+    loadSection(GAZE, GAZE_SECTION)
 end
 
 local function apply(setting, value)
@@ -194,6 +216,13 @@ registerForEvent("onDraw", function()
             drawSliders(profile, section.trailingSliders)
             drawFlags(profile, section.trailingFlags)
         end
+        ImGui.PopID()
+
+        ImGui.Separator()
+        ImGui.PushID(GAZE.id)
+        ImGui.Text(GAZE_SECTION.title)
+        drawFlags(GAZE, GAZE_SECTION.flags)
+        drawSliders(GAZE, GAZE_SECTION.sliders)
         ImGui.PopID()
 
         if message ~= "" then
