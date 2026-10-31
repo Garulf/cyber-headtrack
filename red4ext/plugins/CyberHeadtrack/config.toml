@@ -2,6 +2,9 @@
 # [on_foot] applies while walking; [vehicle] while seated in any car or bike.
 # lean_* moves the camera with your head position; it starts off in vehicles.
 # ads_eye: -1 left, 0 centre, 1 right.
+# [gaze] moves the scanner reticle to where you look in scan mode (Tab) and scans the target
+# under it. sticky_lock keeps that target while you look away from it (e.g. at the quickhack
+# list); lock_radius is a fraction of the screen height.
 # [tobii] fallback_url is opened when Stream Engine finds no tracker (Wine/Proton with
 # tobii-linux serving the PRP pipe); "" turns it off.
 
@@ -58,6 +61,14 @@ ads_ease_seconds = 0.25
 ads_eye = 1
 ads_eye_offset_cm = 3.2
 invert_lean_forward = false
+
+[gaze]
+scan_enabled = true
+smoothing_min_cutoff_hz = 0.5
+smoothing_beta = 1
+sticky_lock = true
+lock_radius = 0.06
+switch_dwell_seconds = 0.2
 
 [tobii]
 fallback_url = "tobii-prp://ET5-LINUX"

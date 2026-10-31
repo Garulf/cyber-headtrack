@@ -88,3 +88,32 @@ TEST_CASE("FromBasis handles a camera turned half way round", "[aim_math]") {
 
     RequireSame(Rotate(rebuilt, kForward), Vec3{0.0, -1.0, 0.0});
 }
+
+TEST_CASE("ScreenToCameraDirection maps the screen centre to forward", "[aim_math]") {
+    RequireSame(ScreenToCameraDirection({0.5, 0.5}, 1.3, 2.1), kForward);
+}
+
+TEST_CASE("ScreenToCameraDirection maps the right edge through the horizontal scale", "[aim_math]") {
+    const double s = std::sqrt(0.5);
+    RequireSame(ScreenToCameraDirection({1.0, 0.5}, 1.0, 1.0), Vec3{s, s, 0.0});
+}
+
+TEST_CASE("ScreenToCameraDirection maps the top edge through the vertical scale", "[aim_math]") {
+    const double half = 30.0 * std::numbers::pi / 180.0;
+    const Vec3 direction = ScreenToCameraDirection({0.5, 0.0}, 1.0, 1.0 / std::tan(half));
+    RequireSame(direction, Vec3{0.0, std::cos(half), std::sin(half)});
+}
+
+TEST_CASE("ScreenToCameraDirection points left and down for the lower left", "[aim_math]") {
+    const Vec3 direction = ScreenToCameraDirection({0.25, 0.75}, 1.0, 1.7);
+    REQUIRE(direction.x < 0.0);
+    REQUIRE(direction.z < 0.0);
+    REQUIRE(std::hypot(direction.x, direction.y, direction.z) == Approx(1.0));
+}
+
+TEST_CASE("AngleDegrees measures the angle between two directions", "[aim_math]") {
+    REQUIRE(AngleDegrees(kForward, kForward) == Approx(0.0).margin(1e-6));
+    REQUIRE(AngleDegrees(kForward, Vec3{1.0, 0.0, 0.0}) == Approx(90.0));
+    REQUIRE(AngleDegrees(kForward, Vec3{0.0, -2.0, 0.0}) == Approx(180.0));
+    REQUIRE(AngleDegrees(kForward, Rotate(AboutZ(30.0), Vec3{0.0, 3.0, 0.0})) == Approx(30.0));
+}

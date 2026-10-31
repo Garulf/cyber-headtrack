@@ -1,7 +1,9 @@
 #include "config.h"
 
 #include <cmath>
+#include <cstddef>
 #include <fstream>
+#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -18,14 +20,15 @@ std::string Utf8(const std::filesystem::path& path) {
     return std::string(utf8.begin(), utf8.end());
 }
 
+template <typename Config>
 struct Setting {
     std::string_view key;
     bool isFlag;
-    double (*get)(const ProfileConfig&);
-    void (*set)(ProfileConfig&, double);
+    double (*get)(const Config&);
+    void (*set)(Config&, double);
 };
 
-constexpr Setting kSettings[] = {
+constexpr Setting<ProfileConfig> kSettings[] = {
     {"smoothing_min_cutoff_hz", false,
      [](const ProfileConfig& c) { return c.smoothingMinCutoffHz; },
      [](ProfileConfig& c, double v) { c.smoothingMinCutoffHz = v; }},
@@ -103,6 +106,29 @@ constexpr Setting kSettings[] = {
      [](ProfileConfig& c, double v) { c.invertLean.forward = v != 0.0; }},
 };
 
+constexpr std::string_view kGazeSection = "gaze";
+
+constexpr Setting<GazeConfig> kGazeSettings[] = {
+    {"scan_enabled", true,
+     [](const GazeConfig& c) { return c.scanEnabled ? 1.0 : 0.0; },
+     [](GazeConfig& c, double v) { c.scanEnabled = v != 0.0; }},
+    {"smoothing_min_cutoff_hz", false,
+     [](const GazeConfig& c) { return c.smoothingMinCutoffHz; },
+     [](GazeConfig& c, double v) { c.smoothingMinCutoffHz = v; }},
+    {"smoothing_beta", false,
+     [](const GazeConfig& c) { return c.smoothingBeta; },
+     [](GazeConfig& c, double v) { c.smoothingBeta = v; }},
+    {"sticky_lock", true,
+     [](const GazeConfig& c) { return c.stickyLock ? 1.0 : 0.0; },
+     [](GazeConfig& c, double v) { c.stickyLock = v != 0.0; }},
+    {"lock_radius", false,
+     [](const GazeConfig& c) { return c.lockRadius; },
+     [](GazeConfig& c, double v) { c.lockRadius = v; }},
+    {"switch_dwell_seconds", false,
+     [](const GazeConfig& c) { return c.switchDwellSeconds; },
+     [](GazeConfig& c, double v) { c.switchDwellSeconds = v; }},
+};
+
 struct ProfileSection {
     std::string_view name;
     Profile profile;
@@ -114,8 +140,9 @@ constexpr ProfileSection kSections[] = {
     {"vehicle", Profile::Vehicle, &TrackingConfig::vehicle},
 };
 
-const Setting* FindSetting(std::string_view key) {
-    for (const Setting& setting : kSettings) {
+template <typename Config, size_t N>
+const Setting<Config>* FindSetting(const Setting<Config> (&settings)[N], std::string_view key) {
+    for (const Setting<Config>& setting : settings) {
         if (setting.key == key) {
             return &setting;
         }
@@ -132,13 +159,25 @@ const ProfileSection* FindSection(std::string_view name) {
     return nullptr;
 }
 
-// Splits "<profile>.<key>" into its section and setting; either is null if unknown.
-std::pair<const ProfileSection*, const Setting*> Resolve(std::string_view name) {
+// Splits "<section>.<key>" at the first dot; both parts are empty if there is none.
+std::pair<std::string_view, std::string_view> SplitName(std::string_view name) {
     const auto dot = name.find('.');
     if (dot == std::string_view::npos) {
-        return {nullptr, nullptr};
+        return {};
     }
-    return {FindSection(name.substr(0, dot)), FindSetting(name.substr(dot + 1))};
+    return {name.substr(0, dot), name.substr(dot + 1)};
+}
+
+// Resolves "<profile>.<key>"; either is null if unknown.
+std::pair<const ProfileSection*, const Setting<ProfileConfig>*> Resolve(std::string_view name) {
+    const auto [section, key] = SplitName(name);
+    return {FindSection(section), FindSetting(kSettings, key)};
+}
+
+// Resolves "gaze.<key>"; null if the name is not a gaze setting.
+const Setting<GazeConfig>* ResolveGaze(std::string_view name) {
+    const auto [section, key] = SplitName(name);
+    return section == kGazeSection ? FindSetting(kGazeSettings, key) : nullptr;
 }
 
 void Require(bool valid, std::string_view section, std::string_view key, const char* rule,
@@ -184,20 +223,47 @@ void Validate(const ProfileConfig& c, std::string_view section) {
             section, "ads_eye_offset_cm", "between 0 and 10", c.adsEyeOffsetCm);
 }
 
+void Validate(const GazeConfig& c) {
+    Require(std::isfinite(c.smoothingMinCutoffHz) && c.smoothingMinCutoffHz > 0.0, kGazeSection,
+            "smoothing_min_cutoff_hz", "> 0", c.smoothingMinCutoffHz);
+    Require(std::isfinite(c.smoothingBeta) && c.smoothingBeta >= 0.0, kGazeSection,
+            "smoothing_beta", ">= 0", c.smoothingBeta);
+    Require(std::isfinite(c.lockRadius) && c.lockRadius >= 0.01 && c.lockRadius <= 0.3,
+            kGazeSection, "lock_radius", "between 0.01 and 0.3", c.lockRadius);
+    Require(std::isfinite(c.switchDwellSeconds) && c.switchDwellSeconds >= 0.0 &&
+                c.switchDwellSeconds <= 2.0,
+            kGazeSection, "switch_dwell_seconds", "between 0 and 2", c.switchDwellSeconds);
+}
+
 void Validate(const TrackingConfig& config) {
     for (const ProfileSection& section : kSections) {
         Validate(config.*section.member, section.name);
     }
+    Validate(config.gaze);
 }
 
-void ReadSettings(const toml::table& table, ProfileConfig& profile) {
-    for (const Setting& setting : kSettings) {
+template <typename Config, size_t N>
+void ReadSettings(const toml::table& table, const Setting<Config> (&settings)[N], Config& config) {
+    for (const Setting<Config>& setting : settings) {
         const auto node = table[setting.key];
         if (setting.isFlag) {
-            setting.set(profile, node.value_or(setting.get(profile) != 0.0) ? 1.0 : 0.0);
+            setting.set(config, node.value_or(setting.get(config) != 0.0) ? 1.0 : 0.0);
         } else {
-            setting.set(profile, node.value_or(setting.get(profile)));
+            setting.set(config, node.value_or(setting.get(config)));
         }
+    }
+}
+
+template <typename Config, size_t N>
+void WriteSettings(std::ostream& out, const Setting<Config> (&settings)[N], const Config& config) {
+    for (const Setting<Config>& setting : settings) {
+        out << setting.key << " = ";
+        if (setting.isFlag) {
+            out << (setting.get(config) != 0.0 ? "true" : "false");
+        } else {
+            out << setting.get(config);
+        }
+        out << "\n";
     }
 }
 
@@ -247,10 +313,13 @@ TrackingConfig LoadConfig(const std::filesystem::path& path) {
     for (const ProfileSection& section : kSections) {
         ProfileConfig& profile = config.*section.member;
         profile = DefaultProfile(section.profile);
-        ReadSettings(table, profile);
+        ReadSettings(table, kSettings, profile);
         if (const toml::table* overrides = table[section.name].as_table()) {
-            ReadSettings(*overrides, profile);
+            ReadSettings(*overrides, kSettings, profile);
         }
+    }
+    if (const toml::table* gaze = table[kGazeSection].as_table()) {
+        ReadSettings(*gaze, kGazeSettings, config.gaze);
     }
     ReadTobiiSettings(table, config);
     Validate(config);
@@ -266,16 +335,10 @@ void SaveConfig(const std::filesystem::path& path, const TrackingConfig& config)
     for (const ProfileSection& section : kSections) {
         const ProfileConfig& profile = config.*section.member;
         out << "\n[" << section.name << "]\n";
-        for (const Setting& setting : kSettings) {
-            out << setting.key << " = ";
-            if (setting.isFlag) {
-                out << (setting.get(profile) != 0.0 ? "true" : "false");
-            } else {
-                out << setting.get(profile);
-            }
-            out << "\n";
-        }
+        WriteSettings(out, kSettings, profile);
     }
+    out << "\n[" << kGazeSection << "]\n";
+    WriteSettings(out, kGazeSettings, config.gaze);
     out << "\n[tobii]\n" << toml::table{{"fallback_url", config.tobiiFallbackUrl}} << "\n";
 }
 
@@ -284,6 +347,9 @@ void SaveDefaultConfig(const std::filesystem::path& path) {
 }
 
 std::optional<double> GetConfigValue(const TrackingConfig& config, std::string_view name) {
+    if (const auto* gazeSetting = ResolveGaze(name)) {
+        return gazeSetting->get(config.gaze);
+    }
     const auto [section, setting] = Resolve(name);
     if (section == nullptr || setting == nullptr) {
         return std::nullopt;
@@ -292,6 +358,13 @@ std::optional<double> GetConfigValue(const TrackingConfig& config, std::string_v
 }
 
 void SetConfigValue(TrackingConfig& config, std::string_view name, double value) {
+    if (const auto* gazeSetting = ResolveGaze(name)) {
+        GazeConfig updated = config.gaze;
+        gazeSetting->set(updated, value);
+        Validate(updated);
+        config.gaze = updated;
+        return;
+    }
     const auto [section, setting] = Resolve(name);
     if (section == nullptr || setting == nullptr) {
         throw std::runtime_error("unknown setting " + std::string(name));

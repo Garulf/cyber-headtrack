@@ -12,6 +12,7 @@
 
 #include "aim_hook.h"
 #include "plugin_log.h"
+#include "scan_hook.h"
 #include "tracking_state.h"
 
 namespace {
@@ -166,6 +167,55 @@ void SetHeadtrackProfile(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, vo
     TrackingState::Instance().SetActiveProfile(profile == 1 ? Profile::Vehicle : Profile::OnFoot);
 }
 
+void SetHeadtrackScanFrame(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t) {
+    bool active = false;
+    float ndcPerTanX = 0.0f;
+    float ndcPerTanY = 0.0f;
+    RED4ext::GetParameter(aFrame, &active);
+    RED4ext::GetParameter(aFrame, &ndcPerTanX);
+    RED4ext::GetParameter(aFrame, &ndcPerTanY);
+    aFrame->code++;
+    TrackingState::Instance().SetScanFrame(active, ndcPerTanX, ndcPerTanY);
+}
+
+void ClearHeadtrackScanCandidates(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t) {
+    aFrame->code++;
+    TrackingState::Instance().ClearScanCandidates();
+}
+
+void AddHeadtrackScanCandidate(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t) {
+    uint64_t id = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    RED4ext::GetParameter(aFrame, &id);
+    RED4ext::GetParameter(aFrame, &x);
+    RED4ext::GetParameter(aFrame, &y);
+    aFrame->code++;
+    TrackingState::Instance().AddScanCandidate({id, {x, y}});
+}
+
+void UpdateHeadtrackScanLock(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t) {
+    float timeDelta = 0.0f;
+    RED4ext::GetParameter(aFrame, &timeDelta);
+    aFrame->code++;
+    TrackingState::Instance().UpdateScanLock(timeDelta);
+}
+
+// X, Y: the scan point on screen (0..1, top-left origin); Z: gaze weight; W: 1 while locked.
+void GetHeadtrackScanPoint(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::Vector4* aOut, int64_t) {
+    aFrame->code++;
+    const auto scan = TrackingState::Instance().CurrentScanPoint();
+    if (aOut) {
+        *aOut = {static_cast<float>(scan.point.x), static_cast<float>(scan.point.y),
+                 static_cast<float>(scan.weight), scan.lockedId ? 1.0f : 0.0f};
+    }
+}
+
+void GetHeadtrackScanLockedId(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t) {
+    aFrame->code++;
+    if (aOut) *aOut = TrackingState::Instance().CurrentScanPoint().lockedId.value_or(0);
+}
+
 // Per-frame update, registered as a custom "Running" game state. RED4ext calls OnUpdate
 // every frame while the game's running state is active; for the Running state the return
 // value is documented as ignored (RED4ext.SDK Api/v1/GameState.hpp).
@@ -180,12 +230,14 @@ bool OnRunningUpdate(RED4ext::CGameApplication*) {
         firstUpdate = false;
         PluginLog("running-state update hook is ticking");
     }
+    TrackingState::Instance().SetScanRedirectLive(ScanRedirectLive());
     TrackingState::Instance().Update(std::min(dtSeconds, 0.25));
     static double secondsSinceAimReport = 0.0;
     secondsSinceAimReport += dtSeconds;
     if (secondsSinceAimReport >= 2.0) {
         secondsSinceAimReport = 0.0;
         ReportAimStats();
+        ReportScanStats();
     }
     return false;
 }
@@ -301,6 +353,39 @@ RED4EXT_C_EXPORT void RED4EXT_CALL PostRegisterTypes() {
     aimFrame->AddParam("Bool", "active");
     rtti->RegisterFunction(aimFrame);
 
+    auto scanFrame = RED4ext::CGlobalFunction::Create("SetHeadtrackScanFrame", "SetHeadtrackScanFrame", &SetHeadtrackScanFrame);
+    scanFrame->flags = flags;
+    scanFrame->AddParam("Bool", "active");
+    scanFrame->AddParam("Float", "ndcPerTanX");
+    scanFrame->AddParam("Float", "ndcPerTanY");
+    rtti->RegisterFunction(scanFrame);
+
+    auto clearCandidates = RED4ext::CGlobalFunction::Create("ClearHeadtrackScanCandidates", "ClearHeadtrackScanCandidates", &ClearHeadtrackScanCandidates);
+    clearCandidates->flags = flags;
+    rtti->RegisterFunction(clearCandidates);
+
+    auto addCandidate = RED4ext::CGlobalFunction::Create("AddHeadtrackScanCandidate", "AddHeadtrackScanCandidate", &AddHeadtrackScanCandidate);
+    addCandidate->flags = flags;
+    addCandidate->AddParam("Uint64", "id");
+    addCandidate->AddParam("Float", "x");
+    addCandidate->AddParam("Float", "y");
+    rtti->RegisterFunction(addCandidate);
+
+    auto updateLock = RED4ext::CGlobalFunction::Create("UpdateHeadtrackScanLock", "UpdateHeadtrackScanLock", &UpdateHeadtrackScanLock);
+    updateLock->flags = flags;
+    updateLock->AddParam("Float", "timeDelta");
+    rtti->RegisterFunction(updateLock);
+
+    auto scanPoint = RED4ext::CGlobalFunction::Create("GetHeadtrackScanPoint", "GetHeadtrackScanPoint", &GetHeadtrackScanPoint);
+    scanPoint->flags = flags;
+    scanPoint->SetReturnType("Vector4");
+    rtti->RegisterFunction(scanPoint);
+
+    auto lockedId = RED4ext::CGlobalFunction::Create("GetHeadtrackScanLockedId", "GetHeadtrackScanLockedId", &GetHeadtrackScanLockedId);
+    lockedId->flags = flags;
+    lockedId->SetReturnType("Uint64");
+    rtti->RegisterFunction(lockedId);
+
     auto log = RED4ext::CGlobalFunction::Create("HeadtrackLog", "HeadtrackLog", &HeadtrackLog);
     log->flags = flags;
     log->AddParam("String", "message");
@@ -330,9 +415,11 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
         };
         aSdk->gameStates->Add(aHandle, RED4ext::EGameStateType::Running, &runningState);
         InstallAimHooks();
+        InstallScanHooks();
         break;
     }
     case RED4ext::v1::EMainReason::Unload: {
+        RemoveScanHooks();
         RemoveAimHooks();
         TrackingState::Instance().Shutdown();
         gSdk = nullptr;

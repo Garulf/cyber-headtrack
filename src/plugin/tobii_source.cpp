@@ -13,6 +13,8 @@ namespace {
 
 constexpr std::chrono::milliseconds kRetryInterval = std::chrono::seconds(3);
 constexpr std::chrono::milliseconds kPollInterval{5};
+constexpr std::chrono::milliseconds kGazeStaleAfter{100};
+constexpr std::chrono::seconds kGazeSilenceWarning{5};
 
 void FirstUrlReceiver(const char* url, void* user_data) {
     auto& first_url = *static_cast<std::string*>(user_data);
@@ -61,6 +63,21 @@ struct TobiiSourceCallbacks {
         raw.rotationXyzRad[2] = pose->rotation_xyz[2];
         source.Publish(MapTobiiSample(raw));
     }
+
+    static void OnGazePoint(const tobii_gaze_point_t* gaze, void* user_data) {
+        auto& source = *static_cast<TobiiSource*>(user_data);
+        const bool valid = gaze != nullptr && gaze->validity == TOBII_VALIDITY_VALID;
+        if (valid != source.gazeValid_) {
+            source.gazeValid_ = valid;
+            PluginLog(valid ? "tobii: receiving gaze point" : "tobii: gaze point lost (no valid sample)");
+        }
+        if (!valid) {
+            source.PublishGaze(std::nullopt);
+            return;
+        }
+        source.gazeEverValid_ = true;
+        source.PublishGaze(ScreenPoint{gaze->position_xy[0], gaze->position_xy[1]});
+    }
 };
 
 TobiiSource::~TobiiSource() {
@@ -93,6 +110,20 @@ void TobiiSource::Publish(std::optional<HeadPose> pose) {
     latest_ = pose;
 }
 
+std::optional<ScreenPoint> TobiiSource::LatestGaze() const {
+    std::lock_guard lock(latestMutex_);
+    if (std::chrono::steady_clock::now() - latestGazeAt_ > kGazeStaleAfter) {
+        return std::nullopt;
+    }
+    return latestGaze_;
+}
+
+void TobiiSource::PublishGaze(std::optional<ScreenPoint> point) {
+    std::lock_guard lock(latestMutex_);
+    latestGaze_ = point;
+    latestGazeAt_ = std::chrono::steady_clock::now();
+}
+
 void TobiiSource::Run(std::stop_token stop) {
     PluginLog("tobii: worker started");
     while (!stop.stop_requested()) {
@@ -103,6 +134,7 @@ void TobiiSource::Run(std::stop_token stop) {
 
         const tobii_error_t error = tobii_device_process_callbacks(device_);
         if (error == TOBII_ERROR_NO_ERROR) {
+            ReportSilentGaze();
             if (!SleepUnlessStopped(stop, kPollInterval)) break;
             continue;
         }
@@ -187,13 +219,50 @@ bool TobiiSource::Connect() {
 
     lastFailure_.clear();
     poseValid_ = false;
-    PluginLog("tobii: connected to %s%s, subscribed to head pose", url.c_str(),
-              usingFallback ? " (fallback_url, none enumerated)" : "");
+    SubscribeGaze();
+    connectedAt_ = std::chrono::steady_clock::now();
+    PluginLog("tobii: connected to %s%s, subscribed to head pose%s", url.c_str(),
+              usingFallback ? " (fallback_url, none enumerated)" : "",
+              gazeSubscribed_ ? " and gaze point" : "");
     return true;
+}
+
+// Gaze is optional: a tracker without it still drives head tracking.
+void TobiiSource::SubscribeGaze() {
+    gazeValid_ = false;
+    gazeEverValid_ = false;
+    gazeSilenceReported_ = false;
+    tobii_supported_t supported = TOBII_NOT_SUPPORTED;
+    tobii_error_t error = tobii_stream_supported(device_, TOBII_STREAM_GAZE_POINT, &supported);
+    if (error == TOBII_ERROR_NO_ERROR && supported != TOBII_SUPPORTED) {
+        error = TOBII_ERROR_NOT_SUPPORTED;
+    }
+    if (error == TOBII_ERROR_NO_ERROR) {
+        error = tobii_gaze_point_subscribe(device_, TobiiSourceCallbacks::OnGazePoint, this);
+    }
+    gazeSubscribed_ = error == TOBII_ERROR_NO_ERROR;
+    if (!gazeSubscribed_) {
+        PluginLog("tobii: gaze point unavailable (%s); scan gaze off", tobii_error_message(error));
+    }
+}
+
+void TobiiSource::ReportSilentGaze() {
+    if (!gazeSubscribed_ || gazeEverValid_ || gazeSilenceReported_ ||
+        std::chrono::steady_clock::now() - connectedAt_ < kGazeSilenceWarning) {
+        return;
+    }
+    gazeSilenceReported_ = true;
+    PluginLog("tobii: subscribed to gaze point but no valid samples after %llds (is a display "
+              "area and calibration set up?)",
+              static_cast<long long>(kGazeSilenceWarning.count()));
 }
 
 void TobiiSource::Disconnect() {
     if (device_ != nullptr) {
+        if (gazeSubscribed_) {
+            tobii_gaze_point_unsubscribe(device_);
+            gazeSubscribed_ = false;
+        }
         tobii_head_pose_unsubscribe(device_);
         tobii_device_destroy(device_);
         device_ = nullptr;
@@ -203,4 +272,5 @@ void TobiiSource::Disconnect() {
         api_ = nullptr;
     }
     Publish(std::nullopt);
+    PublishGaze(std::nullopt);
 }
