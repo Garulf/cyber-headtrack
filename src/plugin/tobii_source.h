@@ -1,22 +1,26 @@
 #pragma once
 
+#include <chrono>
 #include <mutex>
 #include <optional>
 #include <stop_token>
 #include <string>
 #include <thread>
 
+#include "gaze.h"
 #include "head_pose.h"
 
 struct tobii_api_t;
 struct tobii_device_t;
 
-// Wraps the Tobii Stream Engine SDK's head-pose stream (Tobii Eye Tracker 5, head pose only
-// -- no gaze/eye data is ever read from the SDK). Not unit-testable without hardware.
+// Wraps the Tobii Stream Engine SDK's head-pose and gaze-point streams (Tobii Eye Tracker 5).
+// The gaze point only drives the scanner reticle in scan mode; when the tracker doesn't offer
+// it, head pose works on its own. Not unit-testable without hardware.
 //
 // All Stream Engine calls (connect, device enumeration, callback pumping, reconnect) run on a
 // private worker thread, because several of them block for a noticeable time and must never
-// stall the game's main thread. Latest() is the only cross-thread access and is mutex-guarded.
+// stall the game's main thread. Latest() and LatestGaze() are the only cross-thread access and
+// are mutex-guarded.
 class TobiiSource {
 public:
     TobiiSource() = default;
@@ -38,6 +42,10 @@ public:
     // received yet or the tracker is currently reporting invalid data.
     std::optional<HeadPose> Latest() const;
 
+    // Returns the most recent valid gaze point, or std::nullopt if there is none or it is
+    // older than a few frames (the tracker stopped sending, e.g. the eyes left its view).
+    std::optional<ScreenPoint> LatestGaze() const;
+
 private:
     friend struct TobiiSourceCallbacks;
 
@@ -45,6 +53,9 @@ private:
     bool Connect();
     void Disconnect();
     void Publish(std::optional<HeadPose> pose);
+    void PublishGaze(std::optional<ScreenPoint> point);
+    void SubscribeGaze();
+    void ReportSilentGaze();
     void ReportFailure(const std::string& step, int error);
     void ReportProblem(const std::string& problem);
 
@@ -54,7 +65,14 @@ private:
     std::string fallbackUrl_;
     std::string lastFailure_;
     bool poseValid_ = false;
+    bool gazeSubscribed_ = false;
+    bool gazeValid_ = false;
+    bool gazeEverValid_ = false;
+    bool gazeSilenceReported_ = false;
+    std::chrono::steady_clock::time_point connectedAt_;
 
     mutable std::mutex latestMutex_;
     std::optional<HeadPose> latest_;
+    std::optional<ScreenPoint> latestGaze_;
+    std::chrono::steady_clock::time_point latestGazeAt_;
 };

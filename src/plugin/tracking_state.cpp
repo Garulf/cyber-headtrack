@@ -8,6 +8,8 @@ namespace {
 
 constexpr double kPoseLossGraceSeconds = 0.5;
 constexpr double kStatusLogIntervalSeconds = 2.0;
+constexpr size_t kMaxScanCandidates = 64;
+constexpr double kDefaultAspect = 16.0 / 9.0;
 
 }  // namespace
 
@@ -34,6 +36,7 @@ std::optional<std::string> TrackingState::Initialize(const std::filesystem::path
         configError = error.what();
     }
     RebuildFilters();
+    ConfigureGaze();
     source_.Start(config_.tobiiFallbackUrl);
     return configError;
 }
@@ -79,6 +82,8 @@ void TrackingState::SetEnabled(bool enabled) {
 
 void TrackingState::Update(double dtSeconds) {
     std::lock_guard lock(mutex_);
+    const bool gazeActive = enabled_ && scanActive_ && config_.gaze.scanEnabled;
+    gaze_.Update(enabled_ ? source_.LatestGaze() : std::nullopt, gazeActive, dtSeconds);
     if (!enabled_) {
         return;
     }
@@ -113,11 +118,15 @@ void TrackingState::LogStatusPeriodically(double dtSeconds) {
     }
     secondsSinceStatusLog_ = 0.0;
     const EngineAngles angles = ToEngineAngles(current_, Active().invert);
+    const ScanPoint scan = ScanPointLocked();
+    const std::string lockedId = scan.lockedId ? std::to_string(*scan.lockedId) : "none";
     PluginLog("status: profile=%s pose=%s yaw=%.1f pitch=%.1f roll=%.1f lean side=%.1f up=%.1f "
-              "forward=%.1f cm",
+              "forward=%.1f cm gaze=%.3f,%.3f w=%.2f scan=%s lock=%s candidates=%zu",
               profile_ == Profile::Vehicle ? "vehicle" : "on_foot",
               source_.Latest() ? "yes" : "no", angles.yaw, angles.pitch, angles.roll,
-              currentLean_.sideCm, currentLean_.upCm, currentLean_.forwardCm);
+              currentLean_.sideCm, currentLean_.upCm, currentLean_.forwardCm, scan.point.x,
+              scan.point.y, scan.weight, scanActive_ ? "on" : "off", lockedId.c_str(),
+              scanCandidates_.size());
 }
 
 void TrackingState::Recenter() {
@@ -143,6 +152,7 @@ std::string TrackingState::SetSetting(std::string_view key, double value) {
         return error.what();
     }
     RebuildFilters();
+    ConfigureGaze();
     return {};
 }
 
@@ -198,4 +208,64 @@ void TrackingState::ResetFilters() {
     sideFilter_.Reset(0.0);
     upFilter_.Reset(0.0);
     forwardFilter_.Reset(0.0);
+}
+
+void TrackingState::ConfigureGaze() {
+    gaze_.Configure(config_.gaze);
+    scanLock_.Configure(config_.gaze);
+}
+
+void TrackingState::SetScanFrame(bool active, double ndcPerTanX, double ndcPerTanY) {
+    std::lock_guard lock(mutex_);
+    if (active != scanActive_) {
+        PluginLog("scan gaze: scan mode %s", active ? "entered" : "left");
+        scanLock_.Reset();
+        scanLockResult_ = {};
+    }
+    scanActive_ = active;
+    ndcPerTanX_ = ndcPerTanX;
+    ndcPerTanY_ = ndcPerTanY;
+}
+
+void TrackingState::ClearScanCandidates() {
+    std::lock_guard lock(mutex_);
+    scanCandidates_.clear();
+}
+
+void TrackingState::AddScanCandidate(ScanCandidate candidate) {
+    std::lock_guard lock(mutex_);
+    if (scanCandidates_.size() < kMaxScanCandidates) {
+        scanCandidates_.push_back(candidate);
+    }
+}
+
+LockResult TrackingState::UpdateScanLock(double dtSeconds) {
+    std::lock_guard lock(mutex_);
+    const bool projectionKnown = ndcPerTanX_ > 0.0 && ndcPerTanY_ > 0.0;
+    const double aspect = projectionKnown ? ndcPerTanY_ / ndcPerTanX_ : kDefaultAspect;
+    const GazeOutput gaze = gaze_.Current();
+    scanLockResult_ = scanLock_.Update(gaze.point, gaze.weight, scanCandidates_, aspect, dtSeconds);
+    return scanLockResult_;
+}
+
+TrackingState::ScanPoint TrackingState::CurrentScanPoint() const {
+    std::lock_guard lock(mutex_);
+    return ScanPointLocked();
+}
+
+TrackingState::ScanPoint TrackingState::ScanPointLocked() const {
+    const GazeOutput gaze = gaze_.Current();
+    if (scanLockResult_.lockedId && gaze.weight >= 1.0) {
+        return {scanLockResult_.point, gaze.weight, scanLockResult_.lockedId};
+    }
+    return {gaze.point, gaze.weight, std::nullopt};
+}
+
+std::optional<Vec3> TrackingState::ScanCameraDirection() const {
+    std::lock_guard lock(mutex_);
+    const ScanPoint scan = ScanPointLocked();
+    if (!scanActive_ || scan.weight <= 0.0 || ndcPerTanX_ <= 0.0 || ndcPerTanY_ <= 0.0) {
+        return std::nullopt;
+    }
+    return ScreenToCameraDirection(scan.point, ndcPerTanX_, ndcPerTanY_);
 }
