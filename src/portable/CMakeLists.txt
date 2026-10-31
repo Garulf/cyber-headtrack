@@ -16,6 +16,7 @@ add_library(portable STATIC
     aim_math.cpp
     pattern_scan.cpp
     gaze.cpp
+    scan_lock.cpp
 )
 target_include_directories(portable PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(portable PUBLIC cxx_std_20)
