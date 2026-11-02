@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/Garulf/cyber-headtrack/compare/cyber-headtrack-v0.3.0...cyber-headtrack-v0.4.0) (2026-11-02)
+
+
+### Features
+
+* keep head tracking in story scenes, with a per-profile toggle ([#8](https://github.com/Garulf/cyber-headtrack/issues/8)) ([64b2e96](https://github.com/Garulf/cyber-headtrack/commit/64b2e9625e0ed1f81c74f5a09c65e0d4ec1db6ee))
+
+
+### Bug Fixes
+
+* make dodge and dash follow the body instead of the tracked head ([0aae772](https://github.com/Garulf/cyber-headtrack/commit/0aae772507cb39c028a052fdad303b1082911afc))
+* make dodge and dash follow the body instead of the tracked head ([7e7e3d4](https://github.com/Garulf/cyber-headtrack/commit/7e7e3d4891d8b6330b1f4daeb55a61296210d85d))
+
 ## [0.3.0](https://github.com/Garulf/cyber-headtrack/compare/cyber-headtrack-v0.2.1...cyber-headtrack-v0.3.0) (2026-10-30)
 
 
