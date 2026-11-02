@@ -22,7 +22,8 @@
 //
 // While tracking is on, the plugin is also given the camera's world orientation and the head
 // offset each frame so it can turn hitscan shots back onto the body's aim, and the crosshair
-// widgets are moved to that aim point.
+// widgets are moved to that aim point. Dodge and dash impulses are turned the same way, so
+// they follow the body rather than where the head looks.
 //
 // Per-frame drivers: the player state machine's OnUpdate for the active on-foot locomotion
 // state (LocomotionEventsTransition) and for the driver and passenger vehicle states
@@ -93,6 +94,13 @@ func HeadtrackProfileSetting(profile: Int32, key: String) -> Float {
 func HeadtrackIsStoryScene(highLevelState: Int32) -> Bool {
   return highLevelState >= EnumInt(GameplayTier.Tier3_LimitedGameplay)
     && highLevelState <= EnumInt(GameplayTier.Tier5_Cinematic);
+}
+
+// The body's aim in world space, from the rendered camera's world axes and the head offset
+// (camera = body * head, so the aim in the camera's own frame is forward turned back by it).
+func HeadtrackBodyAim(right: Vector4, forward: Vector4, up: Vector4, head: Quaternion) -> Vector4 {
+  let aim: Vector4 = Quaternion.GetForward(HeadtrackConjugate(head));
+  return right * aim.X + forward * aim.Y + up * aim.Z;
 }
 
 func HeadtrackSamePosition(a: Vector4, b: Vector4) -> Bool {
@@ -234,7 +242,7 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
 
     let translation: Vector2 = new Vector2(0.0, 0.0);
     if active {
-      let worldAim: Vector4 = right * aim.X + forward * aim.Y + up * aim.Z;
+      let worldAim: Vector4 = HeadtrackBodyAim(right, forward, up, head);
       if aim.Y > 0.0 {
         let point: Vector4 = transform.position + worldAim * HeadtrackCrosshairDistance();
         point.W = 1.0;
@@ -298,6 +306,25 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
   private final func HighLevelState(player: ref<PlayerPuppet>) -> Int32 {
     let psm: ref<IBlackboard> = player.GetPlayerStateMachineBlackboard();
     return IsDefined(psm) ? psm.GetInt(GetAllBlackboardDefs().PlayerStateMachine.HighLevel) : 0;
+  }
+
+  // Dodge and dash queue an impulse along the camera's yaw, which carries the head offset.
+  // Turning it by the yaw between the camera and the body's aim makes it follow the body.
+  public final func TurnImpulseToBody(stateContext: ref<StateContext>, scriptInterface: ref<StateGameScriptInterface>) -> Void {
+    if !this.applied {
+      return;
+    }
+    let queued: StateResultVector = stateContext.GetTemporaryVectorParameter(n"impulse");
+    if !queued.valid {
+      return;
+    }
+    let camera: Transform = scriptInterface.GetCameraWorldTransform();
+    let bodyAim: Vector4 = HeadtrackBodyAim(Transform.GetRight(camera), Transform.GetForward(camera), Transform.GetUp(camera), this.headOffset);
+    let turn: Float = AngleNormalize180(Vector4.Heading(bodyAim) - Transform.GetYaw(camera));
+    let impulse: Vector4 = queued.value;
+    let turned: Vector4 = Vector4.FromHeading(AngleNormalize180(Vector4.Heading(impulse) + turn)) * Vector4.Length2D(impulse);
+    turned.Z = impulse.Z;
+    stateContext.SetTemporaryVectorParameter(n"impulse", turned, true);
   }
 
   private final func IsThirdPersonVehicleCamera(vehicle: ref<VehicleObject>) -> Bool {
@@ -435,6 +462,35 @@ public func OnUpdate(timeDelta: Float, stateContext: ref<StateContext>, scriptIn
 protected func OnUpdate(timeDelta: Float, stateContext: ref<StateContext>, scriptInterface: ref<StateGameScriptInterface>) -> Void {
   wrappedMethod(timeDelta, stateContext, scriptInterface);
   HeadtrackOnStateUpdate(scriptInterface, "scene", timeDelta);
+}
+
+func HeadtrackTurnImpulseToBody(stateContext: ref<StateContext>, scriptInterface: ref<StateGameScriptInterface>) -> Void {
+  let player: ref<PlayerPuppet> = scriptInterface.executionOwner as PlayerPuppet;
+  if !IsDefined(player) {
+    return;
+  }
+  let system: ref<HeadtrackCameraSystem> = HeadtrackCameraSystem.Get(player.GetGame());
+  if IsDefined(system) {
+    system.TurnImpulseToBody(stateContext, scriptInterface);
+  }
+}
+
+@wrapMethod(DodgeEvents)
+protected final func Dash(stateContext: ref<StateContext>, scriptInterface: ref<StateGameScriptInterface>, isExhausted: Bool, treatDashAsAirDash: Bool) -> Void {
+  wrappedMethod(stateContext, scriptInterface, isExhausted, treatDashAsAirDash);
+  HeadtrackTurnImpulseToBody(stateContext, scriptInterface);
+}
+
+@wrapMethod(DodgeEvents)
+protected final func Dodge(stateContext: ref<StateContext>, scriptInterface: ref<StateGameScriptInterface>, isExhausted: Bool) -> Void {
+  wrappedMethod(stateContext, scriptInterface, isExhausted);
+  HeadtrackTurnImpulseToBody(stateContext, scriptInterface);
+}
+
+@wrapMethod(DodgeAirEvents)
+protected final func Dodge(stateContext: ref<StateContext>, scriptInterface: ref<StateGameScriptInterface>) -> Void {
+  wrappedMethod(stateContext, scriptInterface);
+  HeadtrackTurnImpulseToBody(stateContext, scriptInterface);
 }
 
 @wrapMethod(gameuiCrosshairBaseGameController)
