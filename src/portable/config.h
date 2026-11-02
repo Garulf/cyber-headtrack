@@ -37,6 +37,9 @@ struct ProfileConfig {
     bool adsTrackingOff = false;
     // How long the ADS transitions take (0 = instant).
     double adsEaseSeconds = 0.25;
+
+    // Keep tracking during dialogue and cinematic story scenes.
+    bool trackInScenes = true;
 };
 
 // Signed sideways shift for aiming down sights, in centimeters (positive = right).

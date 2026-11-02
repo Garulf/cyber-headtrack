@@ -31,6 +31,7 @@ ads_ease_seconds = 0.25
 ads_eye = 1
 ads_eye_offset_cm = 3.2
 invert_lean_forward = false
+track_in_scenes = true
 
 [vehicle]
 smoothing_min_cutoff_hz = 1
@@ -58,6 +59,7 @@ ads_ease_seconds = 0.25
 ads_eye = 1
 ads_eye_offset_cm = 3.2
 invert_lean_forward = false
+track_in_scenes = true
 
 [tobii]
 fallback_url = "tobii-prp://ET5-LINUX"
