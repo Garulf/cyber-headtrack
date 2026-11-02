@@ -6,10 +6,10 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <mutex>
 #include <span>
 
+#include "code_patch.h"
 #include "pattern_scan.h"
 #include "plugin_log.h"
 
@@ -112,50 +112,6 @@ std::array<CallSite, 2> gSites{{
      reinterpret_cast<void*>(&EvaluateDirection)},
 }};
 
-std::span<const uint8_t> TextSection(uint8_t* module) {
-    const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(module);
-    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(module + dos->e_lfanew);
-    const IMAGE_SECTION_HEADER* section = IMAGE_FIRST_SECTION(nt);
-    for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
-        if (std::memcmp(section->Name, ".text", 5) == 0) {
-            return {module + section->VirtualAddress, section->Misc.VirtualSize};
-        }
-    }
-    return {};
-}
-
-// Executable memory within rel32 reach of site, holding `mov rax, target; jmp rax`.
-void* AllocateJumpStub(uint8_t* site, void* target) {
-    constexpr uintptr_t kStep = 0x10000;
-    constexpr uintptr_t kReach = 0x70000000;
-    const uintptr_t origin = reinterpret_cast<uintptr_t>(site) & ~(kStep - 1);
-    for (uintptr_t distance = kStep; distance < kReach; distance += kStep) {
-        for (const uintptr_t candidate : {origin - distance, origin + distance}) {
-            void* stub = VirtualAlloc(reinterpret_cast<void*>(candidate), 0x1000,
-                                      MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-            if (stub == nullptr) {
-                continue;
-            }
-            uint8_t code[12] = {0x48, 0xB8};
-            std::memcpy(code + 2, &target, sizeof(target));
-            code[10] = 0xFF;
-            code[11] = 0xE0;
-            std::memcpy(stub, code, sizeof(code));
-            FlushInstructionCache(GetCurrentProcess(), stub, sizeof(code));
-            return stub;
-        }
-    }
-    return nullptr;
-}
-
-void WriteDisplacement(uint8_t* call, int32_t displacement) {
-    DWORD oldProtect = 0;
-    VirtualProtect(call + 1, sizeof(displacement), PAGE_EXECUTE_READWRITE, &oldProtect);
-    std::memcpy(call + 1, &displacement, sizeof(displacement));
-    VirtualProtect(call + 1, sizeof(displacement), oldProtect, &oldProtect);
-    FlushInstructionCache(GetCurrentProcess(), call, 5);
-}
-
 // Finds the site and checks it calls the evaluator, without patching anything.
 uint8_t* LocateSite(const CallSite& site, std::span<const uint8_t> text) {
     const auto matches = FindPattern(text, ParsePattern(site.signature));
@@ -196,16 +152,12 @@ void InstallAimHooks() {
 
     for (size_t i = 0; i < gSites.size(); ++i) {
         CallSite& site = gSites[i];
-        void* stub = AllocateJumpStub(calls[i], site.replacement);
-        if (stub == nullptr) {
+        if (!RedirectCall(calls[i], site.replacement, site.originalDisplacement)) {
             PluginLog("aim: no memory within reach of %s, hitscan correction disabled", site.name);
             RemoveAimHooks();
             return;
         }
-        std::memcpy(&site.originalDisplacement, calls[i] + 1, sizeof(int32_t));
         site.call = calls[i];
-        WriteDisplacement(site.call, static_cast<int32_t>(reinterpret_cast<intptr_t>(stub) -
-                                                          reinterpret_cast<intptr_t>(site.call + 5)));
         PluginLog("aim: hooked %s at +0x%zX", site.name, static_cast<size_t>(site.call - module));
     }
 }
@@ -215,7 +167,7 @@ void RemoveAimHooks() {
         if (site.call == nullptr) {
             continue;
         }
-        WriteDisplacement(site.call, site.originalDisplacement);
+        RestoreCall(site.call, site.originalDisplacement);
         site.call = nullptr;
     }
 }
@@ -223,6 +175,11 @@ void RemoveAimHooks() {
 void SetAimFrame(const Quat& cameraWorld, const Vec3& cameraPosition, const Quat& head, bool active) {
     std::lock_guard lock(gFrameMutex);
     gFrame = {cameraWorld, cameraPosition, head, active};
+}
+
+PublishedCamera CurrentPublishedCamera() {
+    const AimFrame frame = CurrentFrame();
+    return {frame.cameraWorld, frame.cameraPosition};
 }
 
 void ReportAimStats() {

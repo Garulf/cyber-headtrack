@@ -125,6 +125,7 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
   private let writtenSpread: Vector2;
   private let spreadCorrected: Bool;
   private let lastRawSpread: Vector2;
+  private let scanGaze: ref<HeadtrackScanGaze>;
 
   private final func OnPlayerAttach(request: ref<PlayerAttachRequest>) -> Void {
     let player: ref<PlayerPuppet> = request.owner as PlayerPuppet;
@@ -143,6 +144,7 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
 
   private final func OnPlayerDetach(request: ref<PlayerDetachRequest>) -> Void {
     this.UnregisterInput();
+    SetHeadtrackScanFrame(false, 0.0, 0.0);
     this.applied = false;
     this.player = null;
   }
@@ -157,6 +159,13 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
 
   public static func Get(game: GameInstance) -> ref<HeadtrackCameraSystem> {
     return GameInstance.GetScriptableSystemsContainer(game).Get(n"HeadtrackCameraSystem") as HeadtrackCameraSystem;
+  }
+
+  public final func ScanGaze() -> ref<HeadtrackScanGaze> {
+    if !IsDefined(this.scanGaze) {
+      this.scanGaze = new HeadtrackScanGaze();
+    }
+    return this.scanGaze;
   }
 
   public final func RegisterCrosshair(root: ref<inkWidget>) -> Void {
@@ -213,6 +222,7 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
       this.Restore(camera);
     }
     this.UpdateAim(player, aimActive);
+    this.ScanGaze().Update(player, timeDelta);
   }
 
   // Publishes the rendered camera's axes and the head offset so the plugin can turn hitscan

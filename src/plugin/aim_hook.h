@@ -23,5 +23,13 @@ void RemoveAimHooks();
 // third-person vehicle camera).
 void SetAimFrame(const Quat& cameraWorld, const Vec3& cameraPosition, const Quat& head, bool active);
 
+// The rendered camera as last published by SetAimFrame (published every frame, whether or not
+// tracking is on).
+struct PublishedCamera {
+    Quat world;
+    Vec3 position;
+};
+PublishedCamera CurrentPublishedCamera();
+
 // Logs correction counts if they changed since the last call.
 void ReportAimStats();

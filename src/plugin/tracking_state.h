@@ -2,21 +2,27 @@
 
 #include <filesystem>
 #include <mutex>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
+#include "aim_math.h"
 #include "body_visibility.h"
 #include "config.h"
 #include "engine_angles.h"
+#include "gaze.h"
+#include "heartbeat.h"
 #include "head_pose.h"
 #include "one_euro_filter.h"
 #include "rotation.h"
+#include "scan_lock.h"
 #include "shaping.h"
 #include "tobii_source.h"
 
 // Owns the single process-wide tracking pipeline: TobiiSource -> per-axis One Euro filters ->
-// the current Rotation exposed to redscript. The per-frame Running-state hook runs on the game's
+// the current Rotation exposed to redscript, plus the scan-mode gaze point and target lock. The per-frame Running-state hook runs on the game's
 // main thread, but scripts call the RTTI-registered functions from job threads, so every
 // public member locks mutex_.
 class TrackingState {
@@ -68,7 +74,35 @@ public:
     Profile ActiveProfile() const;
     void SetActiveProfile(Profile profile);
 
+    // Scan mode: published by the scan script every frame. ndcPerTanX/Y are the camera
+    // projection's scales (see ScreenToCameraDirection). Gaze is used only while active, and
+    // scan mode counts as left when the script stops publishing (scenes, workspots, death).
+    void SetScanFrame(bool active, double ndcPerTanX, double ndcPerTanY);
+
+    // Whether the targeting hooks are seeing the player's rays (scan_hook.h). Without that the
+    // reticle would show a target the engine isn't using, so gaze stays off.
+    void SetScanRedirectLive(bool live);
+    void ClearScanCandidates();
+    void AddScanCandidate(ScanCandidate candidate);
+    LockResult UpdateScanLock(double dtSeconds);
+
+    struct ScanPoint {
+        ScreenPoint point;
+        double weight = 0.0;
+        std::optional<uint64_t> lockedId;
+    };
+    // Where the scanner reticle and the targeting ray point (the screen centre when gaze is off).
+    ScanPoint CurrentScanPoint() const;
+
+    // The scan point as a camera-space direction, or std::nullopt while the targeting ray
+    // should stay vanilla (scan mode closed, gaze off or lost, no projection published yet).
+    std::optional<Vec3> ScanCameraDirection() const;
+
 private:
+    ScanPoint ScanPointLocked() const;
+    void ConfigureGaze();
+    void ExpireStaleScanFrame();
+
     void LogStatusPeriodically(double dtSeconds);
     void ResetFilters();
     void RebuildFilters();
@@ -96,4 +130,14 @@ private:
     double secondsSinceStatusLog_ = 0.0;
     Profile profile_ = Profile::OnFoot;
     bool enabled_ = false;
+
+    GazeTracker gaze_{GazeConfig{}};
+    ScanLock scanLock_{GazeConfig{}};
+    std::vector<ScanCandidate> scanCandidates_;
+    LockResult scanLockResult_;
+    bool scanActive_ = false;
+    bool scanRedirectLive_ = false;
+    Heartbeat scanFrames_{0.2};
+    double ndcPerTanX_ = 0.0;
+    double ndcPerTanY_ = 0.0;
 };

@@ -1,5 +1,6 @@
 #include "aim_math.h"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -13,6 +14,11 @@ double Dot(const Vec3& a, const Vec3& b) {
 
 double Length(const Vec3& v) {
     return std::sqrt(Dot(v, v));
+}
+
+Vec3 Normalize(const Vec3& v) {
+    const double length = Length(v);
+    return {v.x / length, v.y / length, v.z / length};
 }
 
 }  // namespace
@@ -71,4 +77,15 @@ bool IsNearForward(const Quat& cameraWorld, const Vec3& direction, double maxDeg
     }
     const double cosine = Dot(Rotate(cameraWorld, kForward), direction) / length;
     return cosine >= std::cos(maxDegrees * std::numbers::pi / 180.0);
+}
+
+double AngleDegrees(const Vec3& a, const Vec3& b) {
+    const double cosine = Dot(a, b) / (Length(a) * Length(b));
+    return std::acos(std::clamp(cosine, -1.0, 1.0)) * 180.0 / std::numbers::pi;
+}
+
+Vec3 ScreenToCameraDirection(ScreenPoint point, double ndcPerTanX, double ndcPerTanY) {
+    const double ndcX = 2.0 * point.x - 1.0;
+    const double ndcY = 1.0 - 2.0 * point.y;
+    return Normalize({ndcX / ndcPerTanX, 1.0, ndcY / ndcPerTanY});
 }
