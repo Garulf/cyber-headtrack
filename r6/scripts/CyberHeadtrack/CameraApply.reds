@@ -26,9 +26,16 @@
 //
 // Per-frame drivers: the player state machine's OnUpdate for the active on-foot locomotion
 // state (LocomotionEventsTransition) and for the driver and passenger vehicle states
-// (DriveEvents, PassengerEvents). Each forwards to HeadtrackCameraSystem.OnFrame. A few
-// transient on-foot states (climbing, superhero landing) don't call their base OnUpdate,
-// so tracking holds still there until normal locomotion resumes.
+// (DriveEvents, PassengerEvents), plus the high-level scene tier states
+// (SceneTierAbstractEvents). Story scenes at tiers 4 and 5 swap in their own locomotion
+// state machines, which stop the on-foot and vehicle drivers, while the scene tier state
+// keeps ticking. Each forwards to HeadtrackCameraSystem.OnFrame, which runs once per game
+// frame however many drivers tick. A few transient on-foot states (climbing, superhero
+// landing) don't call their base OnUpdate, so outside scenes tracking holds still there
+// until normal locomotion resumes.
+//
+// Each profile's track_in_scenes setting can turn tracking off during story scenes (scene
+// tiers 3 to 5: limited gameplay, first-person cinematic, cinematic).
 
 native func GetHeadtrackYaw() -> Float;
 native func GetHeadtrackPitch() -> Float;
@@ -83,6 +90,11 @@ func HeadtrackProfileSetting(profile: Int32, key: String) -> Float {
   return GetHeadtrackSetting((profile == 1 ? "vehicle." : "on_foot.") + key);
 }
 
+func HeadtrackIsStoryScene(highLevelState: Int32) -> Bool {
+  return highLevelState >= EnumInt(GameplayTier.Tier3_LimitedGameplay)
+    && highLevelState <= EnumInt(GameplayTier.Tier5_Cinematic);
+}
+
 func HeadtrackSamePosition(a: Vector4, b: Vector4) -> Bool {
   return HeadtrackNearlyEqual(a.X, b.X) && HeadtrackNearlyEqual(a.Y, b.Y)
     && HeadtrackNearlyEqual(a.Z, b.Z);
@@ -100,6 +112,10 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
   private let loggedMissingCamera: Bool;
   private let lastEnabled: Bool;
   private let lastThirdPerson: Bool;
+  private let lastSceneTracking: Bool;
+  private let lastHighLevelState: Int32;
+  private let framed: Bool;
+  private let lastFrameTime: Float;
   private let framesSinceReport: Int32;
   private let engineRewritesSinceReport: Int32;
   private let crosshairs: array<wref<inkWidget>>;
@@ -120,6 +136,7 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
     this.input = new HeadtrackInputListener();
     this.input.Register(player);
     this.applied = false;
+    this.framed = false;
     this.loggedLoopRunning = false;
     HeadtrackLog("camera system attached to player, key listener registered");
   }
@@ -147,6 +164,12 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
   }
 
   public final func OnFrame(player: ref<PlayerPuppet>, source: String, timeDelta: Float) -> Void {
+    let frameTime: Float = EngineTime.ToFloat(GameInstance.GetSimTime(player.GetGame()));
+    if this.framed && frameTime == this.lastFrameTime {
+      return;
+    }
+    this.framed = true;
+    this.lastFrameTime = frameTime;
     if !this.loggedLoopRunning {
       this.loggedLoopRunning = true;
       HeadtrackLog("per-frame camera updates running (first from " + source + ")");
@@ -166,17 +189,24 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
     }
     let enabled: Bool = GetHeadtrackEnabled();
     let thirdPerson: Bool = this.IsThirdPersonVehicleCamera(vehicle);
-    if HeadtrackFlagChanged(enabled, this.lastEnabled) || HeadtrackFlagChanged(thirdPerson, this.lastThirdPerson) {
+    let highLevelState: Int32 = this.HighLevelState(player);
+    let sceneTracking: Bool = !HeadtrackIsStoryScene(highLevelState)
+      || HeadtrackProfileSetting(profile, "track_in_scenes") != 0.0;
+    if HeadtrackFlagChanged(enabled, this.lastEnabled) || HeadtrackFlagChanged(thirdPerson, this.lastThirdPerson)
+      || HeadtrackFlagChanged(sceneTracking, this.lastSceneTracking) || highLevelState != this.lastHighLevelState {
       this.lastEnabled = enabled;
       this.lastThirdPerson = thirdPerson;
+      this.lastSceneTracking = sceneTracking;
+      this.lastHighLevelState = highLevelState;
       HeadtrackLog("camera loop sees enabled=" + ToString(enabled) + " mounted=" + ToString(IsDefined(vehicle))
-        + " vehicleThirdPerson=" + ToString(thirdPerson));
+        + " vehicleThirdPerson=" + ToString(thirdPerson) + " sceneTier=" + ToString(highLevelState)
+        + " sceneTracking=" + ToString(sceneTracking) + " (from " + source + ")");
     }
     if enabled {
       this.ReportPeriodically();
     }
     this.UpdateAdsBlend(player, profile, timeDelta);
-    let aimActive: Bool = enabled && !thirdPerson;
+    let aimActive: Bool = enabled && !thirdPerson && sceneTracking;
     if aimActive {
       this.Apply(camera, IsDefined(vehicle), profile);
     } else {
@@ -263,6 +293,11 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
     }
     this.writtenSpread = corrected;
     this.spreadCorrected = true;
+  }
+
+  private final func HighLevelState(player: ref<PlayerPuppet>) -> Int32 {
+    let psm: ref<IBlackboard> = player.GetPlayerStateMachineBlackboard();
+    return IsDefined(psm) ? psm.GetInt(GetAllBlackboardDefs().PlayerStateMachine.HighLevel) : 0;
   }
 
   private final func IsThirdPersonVehicleCamera(vehicle: ref<VehicleObject>) -> Bool {
@@ -394,6 +429,12 @@ public func OnUpdate(timeDelta: Float, stateContext: ref<StateContext>, scriptIn
 public func OnUpdate(timeDelta: Float, stateContext: ref<StateContext>, scriptInterface: ref<StateGameScriptInterface>) -> Void {
   wrappedMethod(timeDelta, stateContext, scriptInterface);
   HeadtrackOnStateUpdate(scriptInterface, "passenger", timeDelta);
+}
+
+@wrapMethod(SceneTierAbstractEvents)
+protected func OnUpdate(timeDelta: Float, stateContext: ref<StateContext>, scriptInterface: ref<StateGameScriptInterface>) -> Void {
+  wrappedMethod(timeDelta, stateContext, scriptInterface);
+  HeadtrackOnStateUpdate(scriptInterface, "scene", timeDelta);
 }
 
 @wrapMethod(gameuiCrosshairBaseGameController)

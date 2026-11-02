@@ -199,9 +199,13 @@ TEST_CASE("SaveConfig writes both profiles so LoadConfig reads them back unchang
     saved.vehicle.smoothingBeta = 0.25;
     saved.vehicle.yawScale = 2.5;
     saved.vehicle.invert.roll = true;
+    saved.vehicle.trackInScenes = false;
 
     SaveConfig(path, saved);
     TrackingConfig loaded = LoadConfig(path);
+
+    REQUIRE(loaded.onFoot.trackInScenes);
+    REQUIRE_FALSE(loaded.vehicle.trackInScenes);
 
     REQUIRE(loaded.onFoot.smoothingMinCutoffHz == Approx(0.7));
     REQUIRE(loaded.onFoot.maxYawDeg == Approx(60.0));
@@ -253,6 +257,18 @@ TEST_CASE("ads_tracking_off is a per-profile flag, off by default", "[config]") 
     REQUIRE(config.vehicle.adsTrackingOff);
     REQUIRE_FALSE(config.onFoot.adsTrackingOff);
     REQUIRE(GetConfigValue(config, "vehicle.ads_tracking_off") == Approx(1.0));
+}
+
+TEST_CASE("track_in_scenes is a per-profile flag, on by default", "[config]") {
+    TrackingConfig config;
+    REQUIRE(config.onFoot.trackInScenes);
+    REQUIRE(config.vehicle.trackInScenes);
+
+    SetConfigValue(config, "on_foot.track_in_scenes", 0.0);
+
+    REQUIRE_FALSE(config.onFoot.trackInScenes);
+    REQUIRE(config.vehicle.trackInScenes);
+    REQUIRE(GetConfigValue(config, "on_foot.track_in_scenes") == Approx(0.0));
 }
 
 TEST_CASE("ads_ease_seconds defaults to a quarter second and stays within 0 to 2", "[config]") {

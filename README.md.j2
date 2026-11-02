@@ -109,6 +109,9 @@ unless a table overrides them:
 - `ads_eye` / `ads_eye_offset_cm`: when tracking stays on while aiming, shift the view
   sideways toward your aiming eye (`-1` left, `0` centre, `1` right) by this many
   centimeters, about half the distance between your eyes.
+- `track_in_scenes`: keep head tracking on during dialogue and cinematic story scenes,
+  such as sitting down to talk or eat with a character (on by default). Turn it off to
+  leave the camera to the scene.
 
 A separate `[tobii]` table holds `fallback_url`, the tracker the plugin opens when Stream
 Engine finds none. Under Wine and Proton, Stream Engine can't list the named pipes it

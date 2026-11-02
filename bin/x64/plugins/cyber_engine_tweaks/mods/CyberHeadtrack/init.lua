@@ -62,6 +62,12 @@ local SECTIONS = {
             { key = "ads_eye_offset_cm", label = "Eye offset (cm)", min = 0.0, max = 10.0, format = "%.1f" },
         },
     },
+    {
+        title = "Story scenes",
+        flags = {
+            { key = "track_in_scenes", label = "Head tracking in dialogue and cinematic scenes" },
+        },
+    },
 }
 
 local overlayOpen = false

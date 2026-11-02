@@ -101,6 +101,9 @@ constexpr Setting kSettings[] = {
     {"invert_lean_forward", true,
      [](const ProfileConfig& c) { return c.invertLean.forward ? 1.0 : 0.0; },
      [](ProfileConfig& c, double v) { c.invertLean.forward = v != 0.0; }},
+    {"track_in_scenes", true,
+     [](const ProfileConfig& c) { return c.trackInScenes ? 1.0 : 0.0; },
+     [](ProfileConfig& c, double v) { c.trackInScenes = v != 0.0; }},
 };
 
 struct ProfileSection {
