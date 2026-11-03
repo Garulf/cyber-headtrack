@@ -156,6 +156,15 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
   private let writtenSpread: Vector2;
   private let spreadCorrected: Bool;
   private let lastRawSpread: Vector2;
+  private let scanning: Bool;
+  private let scanFrames: Int32;
+  private let scanLookAtChanges: Int32;
+  private let scanTargetChanges: Int32;
+  private let scanHeadTurn: Float;
+  private let lastLookAt: EntityID;
+  private let lastScanned: EntityID;
+  private let lastYaw: Float;
+  private let lastPitch: Float;
 
   private final func OnPlayerAttach(request: ref<PlayerAttachRequest>) -> Void {
     let player: ref<PlayerPuppet> = request.owner as PlayerPuppet;
@@ -235,6 +244,7 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
     }
     if enabled {
       this.ReportPeriodically();
+      this.ReportScanning(player);
     }
     this.UpdateAdsBlend(player, profile, timeDelta);
     let aimActive: Bool = enabled && !thirdPerson && sceneTracking;
@@ -435,6 +445,55 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
       + " r=" + FloatToString(this.writtenOrientation.r));
     this.framesSinceReport = 0;
     this.engineRewritesSinceReport = 0;
+  }
+
+  // While scanning, logs every 60 frames so the gaps between lines give the frame rate there,
+  // with how often the game's look-at and scanned targets changed and how far the head turned.
+  private final func ReportScanning(player: ref<PlayerPuppet>) -> Void {
+    let psm: ref<IBlackboard> = player.GetPlayerStateMachineBlackboard();
+    let scanning: Bool = IsDefined(psm)
+      && psm.GetInt(GetAllBlackboardDefs().PlayerStateMachine.Vision) == EnumInt(gamePSMVision.Focus);
+    let yaw: Float = GetHeadtrackYaw();
+    let pitch: Float = GetHeadtrackPitch();
+    if scanning {
+      let blackboards: ref<BlackboardSystem> = GameInstance.GetBlackboardSystem(player.GetGame());
+      let lookAt: EntityID = blackboards.Get(GetAllBlackboardDefs().UI_TargetingInfo).GetEntityID(GetAllBlackboardDefs().UI_TargetingInfo.CurrentVisibleTarget);
+      let scanned: EntityID = blackboards.Get(GetAllBlackboardDefs().UI_Scanner).GetEntityID(GetAllBlackboardDefs().UI_Scanner.ScannedObject);
+      if this.scanning {
+        this.scanFrames += 1;
+        this.scanHeadTurn += AbsF(yaw - this.lastYaw) + AbsF(pitch - this.lastPitch);
+        if !Equals(lookAt, this.lastLookAt) {
+          this.scanLookAtChanges += 1;
+        }
+        if !Equals(scanned, this.lastScanned) {
+          this.scanTargetChanges += 1;
+        }
+      } else {
+        HeadtrackLog("scanning: started");
+      }
+      if this.scanFrames >= 60 {
+        HeadtrackLog("scanning: " + ToString(this.scanFrames) + " frames, look-at target changed "
+          + ToString(this.scanLookAtChanges) + ", scanned object changed " + ToString(this.scanTargetChanges)
+          + ", head turned " + FloatToString(this.scanHeadTurn) + " deg");
+        this.scanFrames = 0;
+        this.scanLookAtChanges = 0;
+        this.scanTargetChanges = 0;
+        this.scanHeadTurn = 0.0;
+      }
+      this.lastLookAt = lookAt;
+      this.lastScanned = scanned;
+    } else {
+      if this.scanning {
+        HeadtrackLog("scanning: stopped");
+      }
+      this.scanFrames = 0;
+      this.scanLookAtChanges = 0;
+      this.scanTargetChanges = 0;
+      this.scanHeadTurn = 0.0;
+    }
+    this.scanning = scanning;
+    this.lastYaw = yaw;
+    this.lastPitch = pitch;
   }
 
   private final func Restore(camera: ref<FPPCameraComponent>) -> Void {
