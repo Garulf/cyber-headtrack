@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/Garulf/cyber-headtrack/compare/cyber-headtrack-v0.4.0...cyber-headtrack-v0.4.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* keep the crosshair on the gun's aim when that is off screen ([#10](https://github.com/Garulf/cyber-headtrack/issues/10)) ([53eacf1](https://github.com/Garulf/cyber-headtrack/commit/53eacf194efb52bee0e881ce7bc623f47e28c10e))
+
 ## [0.4.0](https://github.com/Garulf/cyber-headtrack/compare/cyber-headtrack-v0.3.0...cyber-headtrack-v0.4.0) (2026-11-02)
 
 
