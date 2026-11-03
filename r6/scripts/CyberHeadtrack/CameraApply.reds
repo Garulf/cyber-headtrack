@@ -58,6 +58,10 @@ native func SetHeadtrackAimFrame(cameraRight: Vector4, cameraForward: Vector4, c
 func HeadtrackHalfHudWidth() -> Float = 1920.0
 func HeadtrackHalfHudHeight() -> Float = 1080.0
 func HeadtrackCrosshairDistance() -> Float = 20.0
+// In projected units, where the screen spans -1 to 1: far enough to be off any edge.
+func HeadtrackCrosshairOffscreenReach() -> Float = 2.0
+// Below this forward component (about 87 degrees off the view) the aim point is not projected.
+func HeadtrackMinProjectableForward() -> Float = 0.05
 
 func HeadtrackFlagChanged(current: Bool, previous: Bool) -> Bool {
   return (current && !previous) || (!current && previous);
@@ -101,6 +105,25 @@ func HeadtrackIsStoryScene(highLevelState: Int32) -> Bool {
 func HeadtrackBodyAim(right: Vector4, forward: Vector4, up: Vector4, head: Quaternion) -> Vector4 {
   let aim: Vector4 = Quaternion.GetForward(HeadtrackConjugate(head));
   return right * aim.X + forward * aim.Y + up * aim.Z;
+}
+
+// Crosshair translation in HUD pixels for the body's aim. An aim point off the screen, or one
+// too far to the side to project, is pushed past the edge in the aim's direction, so the
+// crosshair leaves the view rather than landing where the head looks.
+func HeadtrackCrosshairTranslation(aim: Vector4, projected: Vector4, projectable: Bool) -> Vector2 {
+  let x: Float = projectable ? projected.X : aim.X;
+  let y: Float = projectable ? projected.Y : aim.Z;
+  let reach: Float = MaxF(AbsF(x), AbsF(y));
+  if !projectable && reach < 0.0001 {
+    x = 1.0;
+    reach = 1.0;
+  }
+  let limit: Float = HeadtrackCrosshairOffscreenReach();
+  if !projectable || reach > limit {
+    x *= limit / reach;
+    y *= limit / reach;
+  }
+  return new Vector2(x * HeadtrackHalfHudWidth(), -y * HeadtrackHalfHudHeight());
 }
 
 func HeadtrackSamePosition(a: Vector4, b: Vector4) -> Bool {
@@ -242,24 +265,23 @@ public class HeadtrackCameraSystem extends ScriptableSystem {
 
     let translation: Vector2 = new Vector2(0.0, 0.0);
     if active {
-      let worldAim: Vector4 = HeadtrackBodyAim(right, forward, up, head);
-      if aim.Y > 0.0 {
-        let point: Vector4 = transform.position + worldAim * HeadtrackCrosshairDistance();
+      let projectable: Bool = aim.Y > HeadtrackMinProjectableForward();
+      let projected: Vector4;
+      if projectable {
+        let point: Vector4 = transform.position + HeadtrackBodyAim(right, forward, up, head) * HeadtrackCrosshairDistance();
         point.W = 1.0;
-        let projected: Vector4 = cameraSystem.ProjectPoint(point);
-        let plausible: Bool = AbsF(projected.X) <= 1.5 && AbsF(projected.Y) <= 1.5;
-        if plausible {
-          translation = new Vector2(projected.X * HeadtrackHalfHudWidth(), -projected.Y * HeadtrackHalfHudHeight());
-        }
-        this.framesSinceCrosshairLog += 1;
-        if this.framesSinceCrosshairLog >= 150 {
-          this.framesSinceCrosshairLog = 0;
-          HeadtrackLog("crosshair: aim in camera frame " + FloatToString(aim.X) + ", " + FloatToString(aim.Y) + ", "
-            + FloatToString(aim.Z) + " projected " + FloatToString(projected.X) + ", " + FloatToString(projected.Y)
-            + (plausible ? "" : " (ignored)") + " on " + ToString(ArraySize(this.crosshairs)) + " widgets; spread raw "
-            + FloatToString(this.lastRawSpread.X) + ", " + FloatToString(this.lastRawSpread.Y) + " written "
-            + FloatToString(this.writtenSpread.X) + ", " + FloatToString(this.writtenSpread.Y));
-        }
+        projected = cameraSystem.ProjectPoint(point);
+      }
+      translation = HeadtrackCrosshairTranslation(aim, projected, projectable);
+      this.framesSinceCrosshairLog += 1;
+      if this.framesSinceCrosshairLog >= 150 {
+        this.framesSinceCrosshairLog = 0;
+        HeadtrackLog("crosshair: aim in camera frame " + FloatToString(aim.X) + ", " + FloatToString(aim.Y) + ", "
+          + FloatToString(aim.Z) + (projectable ? " projected " + FloatToString(projected.X) + ", " + FloatToString(projected.Y) : " not projectable")
+          + " moved to " + FloatToString(translation.X) + ", " + FloatToString(translation.Y)
+          + " on " + ToString(ArraySize(this.crosshairs)) + " widgets; spread raw "
+          + FloatToString(this.lastRawSpread.X) + ", " + FloatToString(this.lastRawSpread.Y) + " written "
+          + FloatToString(this.writtenSpread.X) + ", " + FloatToString(this.writtenSpread.Y));
       }
     }
     let i: Int32 = ArraySize(this.crosshairs) - 1;
